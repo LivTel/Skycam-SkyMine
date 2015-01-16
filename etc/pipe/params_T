@@ -1,0 +1,45 @@
+# default tab separated pipeline parameter file for SkyCamT
+#
+#VAR				TYPE	DESCRIPTION
+#-------------------------------------------------------------------------------------------------------------------------------
+#pointingDiffThresh		FLOAT	max pointing angle difference (deg)
+#sExConfFile			STR	path to Sextractor conf file
+#minSources			INT	minimum extracted sources required
+#maxElongation			FLOAT	maximum elongation permitted
+#maxExKurtosis			FLOAT	maximum excess kurtosis allowed
+#maxCombExKurtosis		FLOAT	maximum elongation allowed in combined elongation/kurtosis check
+#maxCombElongation		FLOAT	maximum excess kurtosis allowed in combined elongation/kurtosis check
+#maxSourcesCombCheck		INT	maximum number of sources allowed in combined elongation/kurtosis check
+#maxFlux			FLOAT	maximum source flux in image
+#fieldMargin			INT	margin on CCD to ignore extracted sources (px)
+#CCDSizeX			INT	size of CCD in x direction (px)
+#CCDSizeY			INT	size of CCD in x direction (px)
+#matchingTolerance		FLOAT	catalogue cross matching tolerance (deg)
+#upperColourLimit		FLOAT	Upper (B-R) colour limit for calibration
+#lowerColourLimit		FLOAT	Lower (B-R) colour limit for calibration
+#limitingMag			FLOAT	Limiting magnitude
+#fieldSize			FLOAT	Size of field (deg)
+#numCalibrationImages		INT	Number of images required for calibration run
+#schemaName			STR	Schema name in database
+#minNumMatchedSources		INT	Minimum number of matched sources per frame
+#
+pointingDiffThresh	1.0
+sExConfFile	/skycam/SkyMine/etc/sex/T.sex
+minSources	600
+maxElongation	12.0
+maxExKurtosis	-0.45
+maxCombExKurtosis	5.0
+maxCombElongation	-0.8
+maxSourcesCombCheck	5
+maxFlux	10000000
+fieldMargin	10
+CCDSizeX	1024
+CCDSizeY	1024
+matchingTolerance	0.0411
+upperColourLimit	4
+lowerColourLimit	-1
+limitingMag	12
+fieldSize	21.0
+numCalibrationImages	5
+schemaName	skycamt
+minNumMatchedSources	500
