@@ -53,7 +53,7 @@ class process():
 	if not self.params['skipArchive']:
             # retrieve images from lt-archive
             logger.info("(process.run) retrieving images from archive")
-            ltarchive = archive(self.err, logger)
+            ltarchive = archive(params['path_pw_list'], params['archive_credentials_id'], self.err, logger)
             ## search for images matching criteria
             MySQLLogFile = self.params['resPath'] + "res.skycamfiles"
             ltarchive.getMySQLLog(self.params['resPath'], "skycam", "skycam", self.params['dateFrom'], self.params['dateTo'], self.params['instrument'], MySQLLogFile) 
@@ -81,7 +81,7 @@ class process():
             f.write(str(self.err.getError()))
 
         # copy over web template to result directory
-        shutil.copyfile(self.params['etcPath'] + "pipe/web_template.php", self.params['resPath'] + 'index.php')
+        #shutil.copyfile(self.params['etcPath'] + "pipe/web_template.php", self.params['resPath'] + 'index.php')
 
         elapsed = (time.time() - startProcessTime)
         logger.info("(process.run) child process finished in " + str(round(elapsed)) + "s")

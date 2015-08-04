@@ -1,28 +1,33 @@
 '''
-name:		ltarchive.py
+name:		archive.py
 author:		rmb
 
 description: 	A class to talk to lt-archive
 '''
-
 import subprocess
 import os
 import paramiko
 import logging
 from errors import errors
 import uuid
+from util import read_password_file as rpf
 
 class archive:
     '''
     a class for querying lt-archive
     '''
-    def __init__(self, err, logger):
-        self.ip 	= "lt-archive"
-        self.port 	= 22
-        self.username	= "data"
-        self.password 	= "ng@tdata"
+    def __init__(self, pw_file, pw_file_id, err, logger):
         self.err	= err
         self.logger	= logger
+        try:
+            self.ip, self.port, self.username, self.password = rpf(pw_file, pw_file_id);
+            self.port = int(self.port)
+        except IOError:
+            self.err.setError(-15)
+            self.err.handleError()       
+        except TypeError:
+            self.err.setError(-16)
+            self.err.handleError()              
 
     def SSHquery(self, query):
         try:

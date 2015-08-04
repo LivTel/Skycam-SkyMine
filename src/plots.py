@@ -17,15 +17,19 @@ import random
 
 from FITSFile import FITSFile
 
-def plotCalibration(matchedSources, calibrationCoeffs, lowerColourLimit, upperColourLimit, logger, hard, outImageFilename, outDataFilename, numSubsamplePoints=40000):
+def plotCalibration(matchedSources, calibrationCoeffs, lowerColourLimit, upperColourLimit, logger, hard, outImageFilename, outDataFilename, numSubsamplePoints=40000, USNOB=True):
     '''
     make calibration plot from a list of (USNOB matched) source instances
     '''
     magDifference = []
     BRcolour = []
     for i in matchedSources:
-        BRcolour.append(i.USNOBCatB2MAG - i.USNOBCatR2MAG)
-        magDifference.append(i.sExCatMagAuto - i.USNOBCatR2MAG)
+        if USNOB:
+            BRcolour.append(i.USNOBCatB2MAG - i.USNOBCatR2MAG)
+            magDifference.append(i.sExCatMagAuto - i.USNOBCatR2MAG)
+        else:
+            BRcolour.append(i.APASSCatBMAG - i.APASSCatRMAG)
+            magDifference.append(i.sExCatMagAuto - i.APASSCatRMAG)          
     pylab.plot(BRcolour, magDifference, 'bx')
 
     # best fit

@@ -13,7 +13,7 @@ import numpy as np
 import scipy.stats as stats
 from errors import errors
 from FITSFile import FITSFile
-from USNOBCatalogue import *
+from catalogue import *
 from sExCatalogue import *
 from source import *
 from util import *
@@ -38,24 +38,21 @@ class pipeline():
         # extract
         images = self._extractSources(images)
 
-        # catalogue match
-        if self.params['cat'] == 'USNOB':
-            matchedSources, unmatchedSources = self._matchSources_USNOB1(images)
-        elif self.params['cat'] == 'APASS':
-            pass #TODO 
-        elif self.params['cat'] == 'BOTH':
-            pass #TODO  
-
-        # calibrate ZPs
-        calibrationCoeffs = self._calibrateSources(matchedSources);
-
+        # catalogue matching and ZP calibration
+        if 'USNOB' in self.params['cat']:
+            matchedSources, unmatchedSources = self._matchSources_USNOB1(images)  
+            calibrationCoeffs = self._calibrateSources_USNOB1(matchedSources);
+        if 'APASS' in self.params['cat']:
+            matchedSources, unmatchedSources = self._matchSources_APASS(images) 
+            calibrationCoeffs = self._calibrateSources_APASS(matchedSources);
+            
         # store to db
         if self.params['storeToDB']:
             self._storeToPostgresSQLDatabase(matchedSources, unmatchedSources)
 
         # plot
         if self.params['makePlots']:
-                plotCalibration(matchedSources, calibrationCoeffs, float(self.params['lowerColourLimit']), float(self.params['upperColourLimit']), self.logger, hard=True, outImageFilename=self.params['resPath'] + "calibration.png", outDataFilename=self.params['resPath'] + "data.calibration")
+                plotCalibration(matchedSources, calibrationCoeffs, float(self.params['lowerColourLimit']), float(self.params['upperColourLimit']), self.logger, hard=True, outImageFilename=self.params['resPath'] + "calibration.png", outDataFilename=self.params['resPath'] + "data.calibration", USNOB=False)
                 plotMollweide(images, self.err, self.logger, bins=[30,20], hard=True, outImageFilename=self.params['resPath'] + "mollweide.png", outDataFilename=self.params['resPath'] + "data.mollweide")
 
         self.logger.info("(pipeline.run) Finished run")
@@ -103,7 +100,7 @@ class pipeline():
                         self.err.setError(-5)
                         self.err.handleError()
 
-                    if findPointingAngleDiff(thisPointing, lastPointing) > float(self.params['pointingDiffThresh']):
+                    if find_pointing_angle_diff(thisPointing, lastPointing) > float(self.params['pointingDiffThresh']):
                         self.err.setError(3)
                         self.err.handleError() 
                         pointingChanged = True  
@@ -126,7 +123,7 @@ class pipeline():
                 continue
     
             ## check number of catalogue sources
-            numExtSources = max(catdata["NUMBER"])
+            numExtSources = max(catdata["NUMBER"].tonumpy())
             self.logger.info("(pipeline._extractSources) " + str(numExtSources) + " legit sources in image (" + str(int(self.params['minSources'])) + ")")
             if numExtSources < int(self.params['minSources']):
                 self.err.setError(4)
@@ -135,7 +132,7 @@ class pipeline():
                 continue 
 
             ## check maximum elongation of sources
-            elongation = round(max(catdata["ELONGATION"]), 2)
+            elongation = round(max(catdata["ELONGATION"].tonumpy()), 2)
             self.logger.info("(pipeline._extractSources) Max elongation in image is " + str(elongation) + " (" + str(self.params['maxElongation']) + ")")
             if elongation > float(self.params['maxElongation']):
                 self.err.setError(5)
@@ -143,8 +140,8 @@ class pipeline():
                 im.closeFITSFile()
                 continue 
 
-            ## check excess kurtosis of object angle       
-            exKurtosis = round(stats.kurtosis(catdata["THETA_IMAGE"]), 2)
+            ## check excess kurtosis of object angle   
+            exKurtosis = round(stats.kurtosis(catdata["THETA_IMAGE"].tonumpy()), 2)
             self.logger.info("(pipeline._extractSources) Kurtosis of object angle is " + str(exKurtosis) + " (" + str(float(self.params['maxExKurtosis'])) + ")")
             if exKurtosis > float(self.params['maxExKurtosis']):
                 self.err.setError(6)
@@ -166,7 +163,7 @@ class pipeline():
                 continue 
 
             ## check maximum flux   
-            flux = max(catdata['FLUX_MAX'])
+            flux = max(catdata['FLUX_MAX'].tonumpy())
             self.logger.info("(pipeline._extractSources) Maximum flux in catalogue is " + str(flux) + " (" + str(self.params['maxFlux']) + ")")
             if flux > float(self.params['maxFlux']):
                 self.err.setError(8)
@@ -191,6 +188,123 @@ class pipeline():
             self.err.handleError()
 
         return newImages
+      
+    def _matchSources_APASS(self, images, checkColourIndex=True, checkNumMatchedSources=True):
+        '''
+        match sources to APASS catalogue.
+
+        returns two objects containing lists of source instances (unmatchedSources, matchedSources).
+        '''
+        lastPointing = []
+        matchedSources = []
+        unmatchedSources = []
+        APASSCatAll = APASSCatalogue(self.err, self.logger) 
+        for idx, f in enumerate(images):
+            self.logger.info("(pipeline._matchSources_APASS) Processing image " + f)
+
+            im = FITSFile(f, self.err) 
+            im.openFITSFile()
+            im.getHeaders(0)
+
+            matchingTolerance = self.params['matchingTolerance']
+            limitingMag = self.params['limitingMag']
+
+            searchRadius = self.params['fieldSize']
+
+            # establish if we need to query the APASS database
+            ## is this the first image?
+            if idx == 0:
+                try:
+                    self.logger.info("(pipeline._matchSources_APASS) Querying APASS catalogue at " + im.headers['RA'] + " " + im.headers['DEC'] + " with a search radius of " + str(searchRadius + float(self.params['pointingDiffThresh'])) + ", " + str(searchRadius + float(self.params['pointingDiffThresh'])) + " deg")
+                    APASSCatAll.query(self.params['path_pw_list'], self.params['apass_db_credentials_id'], self.params['apass_db_name'], hms_2_deg(im.headers['RA']), dms_2_deg(im.headers['DEC']), searchRadius + self.params['pointingDiffThresh'], limitingMag)
+                    lastPointing = [im.headers["RA_CENT"], im.headers["DEC_CENT"]]
+                except KeyError:
+                    self.err.setError(-5)
+                    self.err.handleError()
+            ## if not..
+            else:
+                try:
+                    thisPointing = [im.headers["RA_CENT"], im.headers["DEC_CENT"]]
+                except KeyError:
+                    self.err.setError(-5)
+                    self.err.handleError()
+
+                ## ..check that the pointing hasn't changed
+                if find_pointing_angle_diff(thisPointing, lastPointing) > float(self.params['pointingDiffThresh']):
+                    self.logger.info("(pipeline._matchSources_APASS) Pointing has changed since last image.")
+                    self.logger.info("(pipeline._matchSources_APASS) Querying APASS catalogue at " + im.headers['RA'] + " " + im.headers['DEC'] + " with a search radius of " + str(searchRadius + float(self.params['pointingDiffThresh'])) + ", " + str(searchRadius + float(self.params['pointingDiffThresh'])) + " deg")
+                    APASSCatAll.query(self.params['path_pw_list'], self.params['apass_db_credentials_id'], self.params['apass_db_name'], hms_2_deg(im.headers['RA']), dms_2_deg(im.headers['DEC']), searchRadius + self.params['pointingDiffThresh'], limitingMag)
+                else:
+                    self.logger.info("(pipeline._matchSources_APASS) Pointing has NOT changed since last image. Using data from previous APASS query")
+
+                lastPointing = thisPointing
+
+            # parse Sextractor catalogue
+            sExCat = sExCatalogue(self.err, self.logger)
+            sExCat.read(f)
+
+            self.logger.info("(pipeline._matchSources_APASS) Cross matching catalogues with a tolerance of " + str(matchingTolerance*3600) + " arcsec")
+            matches = pysm.spherematch(sExCat.RA, sExCat.DEC, APASSCatAll.RA, APASSCatAll.DEC, tol=matchingTolerance, nnearest=1)
+
+            sExCatMatchedIndexes = matches[0]
+            APASSMatchedIndexes = matches[1]
+
+            # find indexes of unmatched sources
+            sExCatAllIndexes = np.arange(0, len(sExCat.RA), 1)
+            sExCatUnmatchedIndexes = list(set(sExCatAllIndexes) - set(sExCatMatchedIndexes))
+            self.logger.info("(pipeline._matchSources_APASS) Cross matched " + str(len(sExCatMatchedIndexes)) + " source(s)")
+
+            # if set, check number of matched sources is greater than the minimum required
+            if checkNumMatchedSources:
+                if len(sExCatMatchedIndexes) < int(self.params['minNumMatchedSources']):
+                    self.err.setError(12)
+                    self.err.handleError()
+                    continue
+
+            # create a list of matched sources
+            for idx in range(len(sExCatMatchedIndexes)):
+               matchedSources.append(source(f, sExCat.RA[sExCatMatchedIndexes[idx]], sExCat.DEC[sExCatMatchedIndexes[idx]], 
+                                            sExCat.X_IMAGE[sExCatMatchedIndexes[idx]], sExCat.Y_IMAGE[sExCatMatchedIndexes[idx]], 
+                                            sExCat.FLUX_AUTO[sExCatMatchedIndexes[idx]], sExCat.FLUXERR_AUTO[sExCatMatchedIndexes[idx]], 
+                                            sExCat.MAG_AUTO[sExCatMatchedIndexes[idx]], sExCat.MAGERR_AUTO[sExCatMatchedIndexes[idx]], 
+                                            sExCat.BACKGROUND[sExCatMatchedIndexes[idx]], sExCat.ISOAREA_WORLD[sExCatMatchedIndexes[idx]], 
+                                            sExCat.FLAGS[sExCatMatchedIndexes[idx]], sExCat.FWHM_WORLD[sExCatMatchedIndexes[idx]], 
+                                            sExCat.ELONGATION[sExCatMatchedIndexes[idx]], sExCat.ELLIPTICITY[sExCatMatchedIndexes[idx]], 
+                                            sExCat.THETA_IMAGE[sExCatMatchedIndexes[idx]], APASSCatREF=APASSCatAll.APASSREF[APASSMatchedIndexes[idx]], 
+                                            APASSCatRA=APASSCatAll.RA[APASSMatchedIndexes[idx]], APASSCatDEC=APASSCatAll.DEC[APASSMatchedIndexes[idx]], 
+                                            APASSCatRAERR=APASSCatAll.RAERR[APASSMatchedIndexes[idx]], APASSCatDECERR=APASSCatAll.DECERR[APASSMatchedIndexes[idx]], 
+                                            APASSCatVMAG=APASSCatAll.VMAG[APASSMatchedIndexes[idx]], APASSCatBMAG=APASSCatAll.BMAG[APASSMatchedIndexes[idx]], 
+                                            APASSCatGMAG=APASSCatAll.GMAG[APASSMatchedIndexes[idx]], APASSCatRMAG=APASSCatAll.RMAG[APASSMatchedIndexes[idx]], 
+                                            APASSCatIMAG=APASSCatAll.IMAG[APASSMatchedIndexes[idx]], APASSCatVMAGERR=APASSCatAll.VMAGERR[APASSMatchedIndexes[idx]], 
+                                            APASSCatBMAGERR=APASSCatAll.BMAGERR[APASSMatchedIndexes[idx]], APASSCatGMAGERR=APASSCatAll.GMAGERR[APASSMatchedIndexes[idx]], 
+                                            APASSCatRMAGERR=APASSCatAll.RMAGERR[APASSMatchedIndexes[idx]], APASSCatIMAGERR=APASSCatAll.IMAGERR[APASSMatchedIndexes[idx]])) # always want to append to source list
+
+            # create a list of unmatched sources
+            for idx in range(len(sExCatUnmatchedIndexes)):
+                unmatchedSources.append(source(f, sExCat.RA[sExCatUnmatchedIndexes[idx]], sExCat.DEC[sExCatUnmatchedIndexes[idx]], sExCat.X_IMAGE[sExCatUnmatchedIndexes[idx]], 
+                                               sExCat.Y_IMAGE[sExCatUnmatchedIndexes[idx]], sExCat.FLUX_AUTO[sExCatUnmatchedIndexes[idx]], sExCat.FLUXERR_AUTO[sExCatUnmatchedIndexes[idx]], 
+                                               sExCat.MAG_AUTO[sExCatUnmatchedIndexes[idx]], sExCat.MAGERR_AUTO[sExCatUnmatchedIndexes[idx]], sExCat.BACKGROUND[sExCatUnmatchedIndexes[idx]], 
+                                               sExCat.ISOAREA_WORLD[sExCatUnmatchedIndexes[idx]], sExCat.FLAGS[sExCatUnmatchedIndexes[idx]], sExCat.FWHM_WORLD[sExCatUnmatchedIndexes[idx]], 
+                                               sExCat.ELONGATION[sExCatUnmatchedIndexes[idx]], sExCat.ELLIPTICITY[sExCatUnmatchedIndexes[idx]], sExCat.THETA_IMAGE[sExCatUnmatchedIndexes[idx]])) # always want to append to source list
+
+            self.logger.info("(pipeline._matchSources_APASS) Couldn't find a match for " + str(len(sExCatUnmatchedIndexes)) + " source(s)")          
+
+            # if set, remove sources with too high a colour index
+            if checkColourIndex:
+                numSourcesBefore = len(matchedSources)
+                for idx, i in enumerate(matchedSources):
+                    BRColour = i.APASSCatBMAG - i.APASSCatRMAG
+                    if BRColour < float(self.params['lowerColourLimit']) or BRColour > float(self.params['upperColourLimit']):
+                        del matchedSources[idx]
+                self.logger.info("(pipeline._matchSources_APASS) Removed " + str(numSourcesBefore - len(matchedSources)) + " source(s) due to colour index constraint")       
+
+            im.closeFITSFile()
+
+        if len(matchedSources) == 0:
+            self.err.setError(-9)
+            self.err.handleError()
+                    
+        return matchedSources, unmatchedSources      
 
     def _matchSources_USNOB1(self, images, checkColourIndex=True, checkNumMatchedSources=True):
         '''
@@ -209,27 +323,17 @@ class pipeline():
 	    im.openFITSFile()
             im.getHeaders(0)
 
-            matchingTolerance = float(self.params['matchingTolerance'])
-            limitingMag = float(self.params['limitingMag'])
- 
-            ''' 
-            # This is an obsolete way of finding out the search area box on a per-frame basis.
-            raSearchRadius = (float(im.headers["RA_MAX"]) - float(im.headers["RA_MIN"])) / 2
-            decSearchRadius = (float(im.headers["DEC_MAX"]) - float(im.headers["DEC_MIN"])) / 2
+            matchingTolerance = self.params['matchingTolerance']
+            limitingMag = self.params['limitingMag']
 
-            if raSearchRadius > decSearchRadius:
-                searchRadius = raSearchRadius
-            else:
-                searchRadius = decSearchRadius'''
-	
-            searchRadius = float(self.params['fieldSize'])
+            searchRadius = self.params['fieldSize']
 
             # establish if we need to query the USNOB1 database
             ## is this the first image?
             if idx == 0:
                 try:
                     self.logger.info("(pipeline._matchSources_USNOB1) Querying USNO-B catalogue at " + im.headers['RA'] + " " + im.headers['DEC'] + " with a search radius of " + str(searchRadius + float(self.params['pointingDiffThresh'])) + ", " + str(searchRadius + float(self.params['pointingDiffThresh'])) + " deg")
-                    USNOBCatAll.query(self.params['resPath'] + os.path.basename(f) + ".usnob", self.params['binPath'], self.params['catUSNOBPath'], im.headers['RA'], im.headers['DEC'], (float(searchRadius) + float(self.params['pointingDiffThresh']))*60, float(limitingMag))
+                    USNOBCatAll.query(self.params['resPath'] + os.path.basename(f) + ".usnob", self.params['binPath'], self.params['catUSNOBPath'], im.headers['RA'], im.headers['DEC'], (searchRadius + self.params['pointingDiffThresh'])*60, limitingMag)
                     lastPointing = [im.headers["RA_CENT"], im.headers["DEC_CENT"]]
                 except KeyError:
                     self.err.setError(-5)
@@ -243,10 +347,10 @@ class pipeline():
                     self.err.handleError()
 
                 ## ..check that the pointing hasn't changed
-                if findPointingAngleDiff(thisPointing, lastPointing) > float(self.params['pointingDiffThresh']):
+                if find_pointing_angle_diff(thisPointing, lastPointing) > float(self.params['pointingDiffThresh']):
                     self.logger.info("(pipeline._matchSources_USNOB1) Pointing has changed since last image.")
                     self.logger.info("(pipeline._matchSources_USNOB1) Querying USNO-B catalogue at " + im.headers['RA'] + " " + im.headers['DEC'] + " with a search radius of " + str(searchRadius + float(self.params['pointingDiffThresh'])) + ", " + str(searchRadius + float(self.params['pointingDiffThresh'])) + " deg")
-                    USNOBCatAll.query(self.params['resPath'] + os.path.basename(f) + ".usnob", self.params['binPath'], self.params['catUSNOBPath'], im.headers['RA'], im.headers['DEC'], (float(searchRadius) + float(self.params['pointingDiffThresh']))*60, float(limitingMag))
+                    USNOBCatAll.query(self.params['resPath'] + os.path.basename(f) + ".usnob", self.params['binPath'], self.params['catUSNOBPath'], im.headers['RA'], im.headers['DEC'], (searchRadius + self.params['pointingDiffThresh'])*60, limitingMag)
                 else:
                     self.logger.info("(pipeline._matchSources_USNOB1) Pointing has NOT changed since last image. Using data from previous USNO-B query")
 
@@ -301,9 +405,9 @@ class pipeline():
                     
         return matchedSources, unmatchedSources
 
-    def _calibrateSources(self, matchedSources):
+    def _calibrateSources_USNOB1(self, matchedSources):
         '''
-        find colour dependent magnitude ZPs.
+        (USNOB1) find colour dependent magnitude ZPs.
 
         returns a list of calibration coefficients.
         '''
@@ -319,6 +423,25 @@ class pipeline():
         self.logger.info("(pipeline._calibrateSources) Coefficients of calibration are [" + str(c) + ", " + str(m) + "]")
 
         return [c, m]
+      
+    def _calibrateSources_APASS(self, matchedSources):
+        '''
+        (APASS) find colour dependent magnitude ZPs.
+
+        returns a list of calibration coefficients.
+        '''
+        magDifference = []
+        BRcolour = []
+        for i in matchedSources:
+            BRcolour.append(i.APASSCatBMAG - i.APASSCatRMAG)
+            magDifference.append(i.sExCatMagAuto - i.APASSCatRMAG)
+
+        # perform linear best fit
+        m, c = np.polyfit(BRcolour, magDifference, 1) 
+
+        self.logger.info("(pipeline._calibrateSources) Coefficients of calibration are [" + str(c) + ", " + str(m) + "]")
+
+        return [c, m]      
 
     def _storeToPostgresSQLDatabase(self, matchedSources, unmatchedSources):
         '''
