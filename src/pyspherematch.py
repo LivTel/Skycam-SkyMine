@@ -7,7 +7,9 @@ Similar in purpose to IDL's spherematch, but totally different implementation.
 Requires numpy and scipy.
 """
 from __future__ import division
+
 import numpy as np
+
 try:
     from scipy.spatial import cKDTree as KDT
 except ImportError:

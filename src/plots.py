@@ -4,37 +4,27 @@ author:		rmb
 
 description: 	A plotting class
 '''
-
+import random
 import logging
-import numpy as np
 
+import numpy as np
 import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.backends.backend_agg
 import pylab
-import random
 
 from FITSFile import FITSFile
 
-def plotCalibration(matchedSources, calibrationCoeffs, lowerColourLimit, upperColourLimit, logger, hard, outImageFilename, outDataFilename, numSubsamplePoints=40000, USNOB=True):
+def plotZPCalibration(magDifference, BRcolour, ZPCoeffs, lowerColourLimit, upperColourLimit, logger, hard, outImageFilename, outDataFilename):
     '''
-    make calibration plot from a list of (USNOB matched) source instances
-    '''
-    magDifference = []
-    BRcolour = []
-    for i in matchedSources:
-        if USNOB:
-            BRcolour.append(i.USNOBCatB2MAG - i.USNOBCatR2MAG)
-            magDifference.append(i.sExCatMagAuto - i.USNOBCatR2MAG)
-        else:
-            BRcolour.append(i.APASSCatBMAG - i.APASSCatRMAG)
-            magDifference.append(i.sExCatMagAuto - i.APASSCatRMAG)          
+    make zeropoint calibration plot
+    '''        
     pylab.plot(BRcolour, magDifference, 'bx')
 
     # best fit
-    c = calibrationCoeffs[0]
-    m = calibrationCoeffs[1]
+    c = ZPCoeffs[0]
+    m = ZPCoeffs[1]
     x = np.arange(lowerColourLimit, upperColourLimit+0.1)
     y = (m*x) + c
     pylab.plot(x, y, '--r') 
@@ -54,20 +44,8 @@ def plotCalibration(matchedSources, calibrationCoeffs, lowerColourLimit, upperCo
     # write data to file
     with open(outDataFilename, 'w+') as f:
         for idx in range(len(magDifference)):
-            f.write(str(BRcolour[idx]) + '\t' + str(magDifference[idx]) + '\n')
-
-    # write random subsample of data to file
-    ## make sure the number of subsampling points isn't greater than the actual sample size!
-    if numSubsamplePoints > len(magDifference):
-        numSubsamplePoints = len(magDifference)
-   
-    ## create random sample
-    subsampleIndexes = random.sample(range(len(magDifference)), numSubsamplePoints)
-
-    with open(outDataFilename + ".subsample", 'w+') as f:
-        for idx in subsampleIndexes:  
-            f.write(str(BRcolour[idx]) + '\t' + str(magDifference[idx]) + '\n')
-
+            f.write(str(BRcolour[idx]) + '\t' + str(magDifference[idx]) + '\n') 
+            
     # write fit to file
     with open(outDataFilename + ".fit", 'w+') as f:
         for idx in range(len(x)):

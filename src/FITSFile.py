@@ -5,9 +5,11 @@ author:		rmb
 description: 	A class to handle FITS files
 '''
 
-from errors import errors
-import pyfits
 import os
+
+import pyfits
+
+from errors import errors
 
 class FITSFile:
     '''

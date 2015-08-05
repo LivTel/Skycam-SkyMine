@@ -87,7 +87,7 @@ if __name__ == "__main__":
         params['rootPath']                      = str(pipe_cfg['paths']['path_root'].rstrip("/") + "/") 
         params['resRootPath']                   = str(pipe_cfg['paths']['path_res'].rstrip("/") + "/") 
         params['path_pw_list']                  = str(pipe_cfg['paths']['path_pw_list'])
-        params['cat']                           = str(pipe_cfg['general']['xmatch_cats'].strip().split(','))
+        params['cat']                           = str(pipe_cfg['general']['xmatch_cat'])
         params['processes']                     = int(pipe_cfg['general']['max_processes'])
         params['obs_day_start']                 = str(pipe_cfg['general']['obs_day_start'])
         params['obs_day_end']                   = str(pipe_cfg['general']['obs_day_end'])
@@ -134,9 +134,9 @@ if __name__ == "__main__":
     ## CATALOGUE
     try:
         assert params['instrument'] == 'SkyCamZ' or params['instrument'] == 'SkyCamT' 
-        assert ("USNOB" in params['cat']) or ("APASS" in params['cat'])
+        assert params['cat'] == "USNOB" or params['cat'] == "APASS"
     except AssertionError: 
-        logger.critical("(__main__) input sanity check failed")
+        logger.critical("(__main__) input sanity checks failed")
         exit(0)
 
     # start process timer

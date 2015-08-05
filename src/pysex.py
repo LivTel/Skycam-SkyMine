@@ -4,10 +4,10 @@ author:		rmb
 
 description: 	A wrapper script for sExtractor
 '''
-
-import os, shutil
-import asciidata
 import logging
+import os, shutil
+
+import asciidata
 
 class pysex():
     ''' 

@@ -4,12 +4,13 @@ author:		rmb
 
 description: 	A lightweight class to abstract basic database interaction
 '''
+import logging
+import time
 
 import MySQLdb
 import psycopg
-import logging
+
 from errors import errors
-import time
 
 class database_mysql:
     '''

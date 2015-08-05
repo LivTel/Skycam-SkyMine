@@ -6,10 +6,12 @@ description: 	A class to talk to lt-archive
 '''
 import subprocess
 import os
-import paramiko
 import logging
-from errors import errors
+
+import paramiko
 import uuid
+
+from errors import errors
 from util import read_password_file as rpf
 
 class archive:

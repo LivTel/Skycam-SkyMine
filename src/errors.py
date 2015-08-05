@@ -34,6 +34,8 @@ class errors:
                                    -16:"(archive.__init__) Archive credentials not found in password file",
                                    -17:"(APASSCatalogue.__init__) Password list not found",
                                    -18:"(APASSCatalogue.__init__) Archive credentials not found in password file",
+                                   -19:"(pipeline._storeToPostgresSQLDatabase) Password list not found",
+                                   -20:"(pipeline._storeToPostgresSQLDatabase) Archive credentials not found in password file",
 				   1:"(pipeline._extractSources) Image doesn't have valid WCS, ignoring",              
                                    2:"(pipeline._extractSources) Image is first in list, ignoring",
                                    3:"(pipeline._extractSources) Pointing angle difference is too large, ignoring",
