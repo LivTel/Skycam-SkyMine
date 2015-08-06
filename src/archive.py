@@ -48,12 +48,14 @@ class archive:
     def getMySQLLog(self, resDir, mySQLUser, mySQLPass, dateFrom, dateTo, instrument, outputFilename):
         '''
         retrieve skycam MySQL log
+        
+        returns the number of lines in the resulting log file
         '''
         thisLogPath = '/tmp/skycam.' + str(uuid.uuid4()) + '.' + os.path.basename(resDir.rstrip('/'))
 
         # generate log
         self.logger.info("(archive.getMySQLLog) running MySQL query on archive")
-        query = 'mysql skycam -u ' + mySQLUser + ' --password=' + mySQLPass + ''' -e 'SELECT __filename as filename, `DATE-OBS` as date FROM fitsheaders WHERE (str_to_date(`DATE-OBS`, "%Y-%m-%dT%H:%i:%s") between "''' + dateFrom + '" and "' + dateTo + '") AND (INSTRUME = "' + instrument + '") ORDER BY date ASC INTO OUTFILE "' + thisLogPath + '''" fields terminated by ",";' '''
+        query = 'mysql skycam -u ' + mySQLUser + ' --password=' + mySQLPass + ''' -e 'SELECT __filename as filename, `DATE-OBS` as date FROM fitsheaders WHERE (str_to_date(`DATE-OBS`, "%Y-%m-%dT%H:%i:%s") between "''' + dateFrom + '" and "' + dateTo + '") AND (INSTRUME = "' + instrument + '") ORDER BY date ASC LIMIT 1 INTO OUTFILE "' + thisLogPath + '''" fields terminated by ",";' '''
         self.SSHquery(query)
 
         # retrieve log
@@ -65,7 +67,9 @@ class archive:
             sftp.get(thisLogPath, outputFilename)
         finally:
             t.close()
-
+            
+        return sum(1 for line in open(outputFilename))
+            
     def getData(self, pathToMySQLLog, pathToDataDir):
         '''
         get data from archive using information from the log

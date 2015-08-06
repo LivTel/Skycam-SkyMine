@@ -80,9 +80,9 @@ class postgresql_skycam_mine():
         insert the contents of a USNOBCatalogue instance into the .matchedUSNOBObjects table.
         '''
         count = 0
-        for i in range(len(cat.USNOBREF)):
+        for i in range(len(cat.REF)):
             # unpack object data
-            ref = cat.USNOBREF[i]
+            ref = cat.REF[i]
             ra = cat.RA[i]
             dec = cat.DEC[i]
             epoch = cat.EPOCH[i]

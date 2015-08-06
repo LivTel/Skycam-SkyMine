@@ -12,32 +12,33 @@ class errors:
     '''
     a class for handling errors.
     '''
-    def __init__(self, logger):
+    def __init__(self, logger, isDaemon):
         self.logger		= logger
+        self.isDaemon           = isDaemon
         self._errorCode		= 0
 	self._errorCodeDict	= {0:"No errors encountered",
 				   -1:"(FITSFile.openFITSFile) Unable to open FITS file. File not found", 
                                    -2:"(FITSFile.getHeaders) Unable to get headers",
                                    -3:"(FITSFile.getData) Unable to get data",
                                    -4:"(FITSFile.closeFITSFile) Unable to close file. File not open",
-                                   -5:"(calibrate._extractSources) RA_CENT||DEC_CENT keyword doesn't exist in file header",
-                                   -6:"(sExCatalogue.query) Config file doesn't exist",
-                                   -7:"(sExCatalogue.query) Params file doesn't exist",
-                                   -8:"(pipeline._extractSources) Insufficient images for calibration to be made",
-                                   -9:"(pipeline._matchSources_*) matchedSources list is empty",
-                                   -10:"(pipeline._extractSources) Purged all images",
-                                   -11:"(pipe.run) Failed to decompress files",
-                                   -12:"(pipe.run) Sorted image list is Nonetype. Probably no images found",
-                                   -13:"(pipe.run) res directory already exists and clobber is not set",
+                                   -5:"",
+                                   -6:"(catalogue.sExCatalogue.query) Config file doesn't exist",
+                                   -7:"(catalogue.sExCatalogue.query) Params file doesn't exist",
+                                   -8:"",
+                                   -9:"(pipeline._XMatchSources_*) matchedSources list is empty",
+                                   -10:"",
+                                   -11:"(process.run_*) Failed to decompress files",
+                                   -12:"(process.run_*) Sorted image list is Nonetype. Probably no images found",
+                                   -13:"(process._create_output_dir) res directory already exists and clobber is not set",
                                    -14:"(database_*.execute) execute query failed",
                                    -15:"(archive.__init__) Password list not found",
                                    -16:"(archive.__init__) Archive credentials not found in password file",
-                                   -17:"(APASSCatalogue.__init__) Password list not found",
-                                   -18:"(APASSCatalogue.__init__) Archive credentials not found in password file",
+                                   -17:"(catalogue.APASSCatalogue.__init__) Password list not found",
+                                   -18:"(catalogue.APASSCatalogue.__init__) Archive credentials not found in password file",
                                    -19:"(pipeline._storeToPostgresSQLDatabase) Password list not found",
                                    -20:"(pipeline._storeToPostgresSQLDatabase) Archive credentials not found in password file",
 				   1:"(pipeline._extractSources) Image doesn't have valid WCS, ignoring",              
-                                   2:"(pipeline._extractSources) Image is first in list, ignoring",
+                                   2:"(process.run_sync) Iteration experienced a CRITICAL fault, ignoring",
                                    3:"(pipeline._extractSources) Pointing angle difference is too large, ignoring",
                                    4:"(pipeline._extractSources) Image has too few sources, ignoring",
                                    5:"(pipeline._extractSources) Image contains source with too long an elongation, ignoring",
@@ -47,7 +48,9 @@ class errors:
                                    9:"(pipeline._extractSources) Image has no sources, ignoring",
                                    10:"(archive.getData) Failed to retrieve image from archive",
                                    11:"(FITSFile.openFITSFile) Header missing END card. Skipping file",
-                                   12:"(pipeline) Image contains too few matched sources, ignoring"}
+                                   12:"(pipeline._XMatchSources) Image contains too few matched sources, ignoring",
+                                   13:"(process.run_sync) Processing time is longer than sync check time"                                  
+                                   }
 
     def setError(self, newErrorCode):
         '''
@@ -71,6 +74,9 @@ class errors:
             self.logger.info(errorMsg)
         elif self._errorCode < 0:
             self.logger.critical(errorMsg)
-            sys.exit(1)
+            if self.isDaemon:
+                raise RuntimeError
+            else:
+                sys.exit(1)
         elif self._errorCode > 0:
             self.logger.warning(errorMsg)

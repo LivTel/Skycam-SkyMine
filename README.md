@@ -5,11 +5,24 @@ This is the repository for the pipeline discussed by
 [Mawson et al.](http://adsabs.harvard.edu/cgi-bin/bib_query?arXiv:1305.0573) 
 refactored into Python.
 
-# Running the pipeline.
+# Installing
 
 You will first need to edit etc/pipe/pipeline.ini and etc/pipe/PW\_LIST 
 accordingly. The pipeline is then invoked from the wrapper 
-script src/run_pipe.py. For a description of available runtime options:
+script src/run_pipe.py. 
+
+You will need to make sure you have a catalogue and output database 
+installed/running. See the db/ and cat/ folders for more information regarding
+this.
+
+If using the USNOB catalogue, you will need to build the query_usnob binary. 
+This can be done from the src/ folder with:
+
+`make usnob`
+
+# Running the pipeline
+
+For a description of available runtime options:
 
 `[rmb@rmb-tower src]$ python run_pipe.py --h`
 
