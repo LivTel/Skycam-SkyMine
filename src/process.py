@@ -117,7 +117,7 @@ class process():
         
         pipe = pipeline(self.params, self.err, self.logger)
         
-        UT_time_end_iter = time.time()-43200      
+        UT_time_end_iter = time.time()     
         current_lag = 0
         while True:
             UT_time_end = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(UT_time_end_iter))  
