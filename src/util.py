@@ -12,6 +12,7 @@ import time
 from time import mktime
 import ConfigParser
 import math
+import tarfile
 
 import pyspherematch as pysm
 from FITSFile import FITSFile
@@ -117,6 +118,20 @@ def sort_image_directory_UTC(path, err, logger):
         # sort and return
         return sorted(images, key=images.get)
 
+def zip_output_files_in_directory(path, archive_name, err, logger):
+    '''
+    zip all files in a directory
+    '''  
+    tar = tarfile.open(path + archive_name, "w")
+    for name in os.listdir(path):
+        if "tar" not in name:
+            if name.endswith(".fits"):
+                tar.add(path + name, arcname='datafiles/' + name)
+            elif name.endswith(".png"):
+                tar.add(path + name, arcname='img/' + name)  
+            else:
+                tar.add(path + name, arcname='other/' + name)  
+    tar.close()
 
 
 

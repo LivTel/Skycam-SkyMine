@@ -34,7 +34,6 @@ if __name__ == "__main__":
     group2 = optparse.OptionGroup(parser, "Postgres database options")
     group2.add_option('--sdb', action='store_true', dest='storeToDB', help='store to db?')
     group2.add_option('--odb', action='store_true', dest='clobberDB', help='overwrite entries with existing filename in db?')
-    group2.add_option('--dm', action='store_true', dest='destroyMine', help='destroy mine before committing')
     parser.add_option_group(group2)
 
     options, args = parser.parse_args()
@@ -49,8 +48,7 @@ if __name__ == "__main__":
         'makePlots'  : bool(options.makePlots),
         'daemon' : bool(options.daemon),
         'storeToDB' : bool(options.storeToDB),   
-        'clobberDB' : bool(options.clobberDB), 
-        'destroyMine' : bool(options.destroyMine)
+        'clobberDB' : bool(options.clobberDB)
     } 
 
     # ------------------------
@@ -99,7 +97,8 @@ if __name__ == "__main__":
         params['skycam_db_name']                = str(pipe_cfg['skycam_catalogue']['db_name'])
         params['archive_credentials_id']        = str(pipe_cfg['lt_archive']['pw_file_entry_id'])
         params['apass_db_credentials_id']       = str(pipe_cfg['apass_catalogue']['pw_file_entry_id'])
-        params['skycam_db_credentials_id']      = str(pipe_cfg['skycam_catalogue']['pw_file_entry_id'])
+        params['skycam_cat_db_credentials_id']  = str(pipe_cfg['skycam_catalogue']['pw_file_entry_id'])
+        params['skycam_lup_db_credentials_id']  = str(pipe_cfg['skycam_lookup']['pw_file_entry_id'])
         # inst specific keys
         params['pointingDiffThresh']            = float(pipe_cfg[inst_cfg_header]['pointing_diff_thresh'])
         params['sExConfFile']                   = str(pipe_cfg[inst_cfg_header]['sex_conf_file'])
@@ -199,9 +198,9 @@ if __name__ == "__main__":
             params_copy = dict(params)
 
             ### replace the necessary keys with their updated values
-            params_copy['dateFrom'] = start.strftime("%Y-%m-%d %H:%M:%S")
-            params_copy['dateTo'] = end.strftime("%Y-%m-%d %H:%M:%S")
-            params_copy['resPath'] = params['resRootPath'] + obsDate.strftime("%Y%m%d") + '/'
+            params_copy['dateFrom']     = start.strftime("%Y-%m-%d %H:%M:%S")
+            params_copy['dateTo']       = end.strftime("%Y-%m-%d %H:%M:%S")
+            params_copy['resPath']      = params['resRootPath'] + obsDate.strftime("%Y%m%d") + '/'
 
             ### add this dict to newParams list
             params_list.append(params_copy)

@@ -27,9 +27,9 @@ class errors:
                                    -8:"",
                                    -9:"(pipeline._XMatchSources_*) matchedSources list is empty",
                                    -10:"",
-                                   -11:"(process.run_*) Failed to decompress files",
+                                   -11:"(process.run_*) Failed to decompress file(s)",
                                    -12:"(process.run_*) Sorted image list is Nonetype. Probably no images found",
-                                   -13:"(process._create_output_dir) res directory already exists and clobber is not set",
+                                   -13:"(process._create_output_dir) res directory exists but clobber is not set",
                                    -14:"(database_*.execute) execute query failed",
                                    -15:"(archive.__init__) Password list not found",
                                    -16:"(archive.__init__) Archive credentials not found in password file",
@@ -37,8 +37,9 @@ class errors:
                                    -18:"(catalogue.APASSCatalogue.__init__) Archive credentials not found in password file",
                                    -19:"(pipeline._storeToPostgresSQLDatabase) Password list not found",
                                    -20:"(pipeline._storeToPostgresSQLDatabase) Archive credentials not found in password file",
+                                   -21:"(archive.__init__) Skycam lookup database credentials not found in password file",
 				   1:"(pipeline._extractSources) Image doesn't have valid WCS, ignoring",              
-                                   2:"(process.run_sync) Iteration experienced a CRITICAL fault, ignoring",
+                                   2:"(process.run_sync) Iteration raised a CRITICAL fault, ignoring",
                                    3:"(pipeline._extractSources) Pointing angle difference is too large, ignoring",
                                    4:"(pipeline._extractSources) Image has too few sources, ignoring",
                                    5:"(pipeline._extractSources) Image contains source with too long an elongation, ignoring",
@@ -46,10 +47,11 @@ class errors:
                                    7:"(pipeline._extractSources) Image has failed combined elongation/kurtosis check, ignoring",
                                    8:"(pipeline._extractSources) Image contains a source with too high a flux, ignoring",
                                    9:"(pipeline._extractSources) Image has no sources, ignoring",
-                                   10:"(archive.getData) Failed to retrieve image from archive",
+                                   10:"(archive.getData) Failed to retrieve image(s) from archive",
                                    11:"(FITSFile.openFITSFile) Header missing END card. Skipping file",
                                    12:"(pipeline._XMatchSources) Image contains too few matched sources, ignoring",
-                                   13:"(process.run_sync) Processing time is longer than sync check time"                                  
+                                   13:"(process.run_sync) Processing time is longer than sync check time",
+                                   14:"(pipeline.run) No valid images found for this run"
                                    }
 
     def setError(self, newErrorCode):

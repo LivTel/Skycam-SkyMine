@@ -83,7 +83,7 @@ class APASSCatalogue(Catalogue):
         APASSDB = database_postgresql(ip, port, username, password, apass_db_name, self.err)
         APASSDB.connect()
         
-        res = APASSDB.read("SELECT name, radeg, decdeg, raerrasec, decerrasec, vmag, bmag, gmag, rmag, imag, verr, berr, gerr, rerr, ierr FROM stars \
+        res = APASSDB.read("SELECT id, radeg, decdeg, raerrasec, decerrasec, vmag, bmag, gmag, rmag, imag, verr, berr, gerr, rerr, ierr FROM stars \
                            WHERE (coords @ scircle '<(" + str(raDeg) + "d," + str(decDeg) + "d)," + str(searchRadius) + "d>' = true) and (bmag <= " 
                            + str(limitingMag) + ") and (rmag <= " + str(limitingMag) + ")")
         

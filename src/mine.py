@@ -96,6 +96,37 @@ class postgresql_skycam_mine():
                 res = self.db.execute(cmd)
                 count = count + 1 
         self.logger.info("(postgresql_skycam_mine.insertMatchedUSNOBObjects) Stored " + str(count) + " new matched USNOB objects into database")
+        
+    def insertMatchedAPASSObjects(self, cat):
+        '''
+        insert the contents of an APASSCatalogue instance into the .matchedAPASSObjects table.
+        '''
+        count = 0
+        for i in range(len(cat.REF)):
+            # unpack object data
+            ref = cat.REF[i]
+            ra = cat.RA[i]
+            dec = cat.DEC[i]
+            raerr = cat.RAERR[i]
+            decerr = cat.DECERR[i]
+            vmag = cat.VMAG[i]
+            bmag = cat.BMAG[i]          
+            gmag = cat.GMAG[i]
+            rmag = cat.RMAG[i] 
+            imag = cat.IMAG[i]    
+            vmagerr = cat.VMAGERR[i]
+            bmagerr = cat.BMAGERR[i]
+            gmagerr = cat.GMAGERR[i]
+            rmagerr = cat.RMAGERR[i]
+            imagerr = cat.IMAGERR[i] 
+            # establish if APASS object already exists in the table
+            cmd = "SELECT count(*) FROM " + self.schemaName + ".matchedAPASSObjects WHERE apassref = " + str(ref)
+            res = self.db.read(cmd).fetchall()
+            if res[0][0] == 0:  # it doesn't    
+                cmd = "INSERT INTO " + self.schemaName + ".matchedAPASSObjects(apassref, ra, dec, ra_err, dec_err, v_mag, b_mag, g_mag, r_mag, i_mag, v_mag_err, b_mag_err, g_mag_err, r_mag_err, i_mag_err, pos) VALUES ('" + str(ref) + "', " + str(ra) + ", " + str(dec) + ", " + str(raerr) + ", " + str(decerr) + ", " + str(vmag) + ", " + str(bmag) + ", " + str(gmag) + ", " + str(rmag) + ", " + str(imag) + ", " + str(vmagerr) + ", " + str(bmagerr) + ", " + str(gmagerr) + ", " + str(rmagerr) + ", " + str(imagerr) + ", spoint(" + str(math.radians(ra)) + ", " + str(math.radians(dec)) + ") )"
+                res = self.db.execute(cmd)
+                count = count + 1 
+        self.logger.info("(postgresql_skycam_mine.insertMatchedAPASSObjects) Stored " + str(count) + " new matched APASS objects into database")        
 
     def insertSources(self, imagePath, img_id, sources):
         '''
@@ -209,6 +240,26 @@ class postgresql_skycam_mine():
                  pos spoint NOT NULL \
                  );"
         self.db.execute(cmd)
+        
+        cmd = "CREATE TABLE " + self.schemaName + ".matchedAPASSObjects ( \
+                 apassref bigserial unique primary key, \
+                 ra double precision NOT NULL, \
+                 dec double precision NOT NULL, \
+                 ra_err double precision NOT NULL, \
+                 dec_err double precision NOT NULL, \
+                 v_mag double precision NOT NULL, \
+                 b_mag double precision NOT NULL, \
+                 g_mag double precision NOT NULL, \
+                 r_mag double precision NOT NULL, \
+                 i_mag double precision NOT NULL, \
+                 v_mag_err double precision NOT NULL, \
+                 b_mag_err double precision NOT NULL, \
+                 g_mag_err double precision NOT NULL, \
+                 r_mag_err double precision NOT NULL, \
+                 i_mag_err double precision NOT NULL, \
+                 pos spoint NOT NULL \
+                 );"
+        self.db.execute(cmd)        
 
         cmd = "CREATE TABLE " + self.schemaName + ".sources ( \
                  src_id bigserial unique primary key, \
@@ -229,10 +280,9 @@ class postgresql_skycam_mine():
                  elongation double precision NOT NULL, \
                  ellipticity double precision NOT NULL, \
                  theta_image double precision NOT NULL, \
-                 usnoref char(25) references " + self.schemaName + ".matchedUSNOBObjects(usnoref), \
-                 usnoref_int bigint references " + self.schemaName + ".matchedUSNOBObjects(usnoref_int), \
-                 rcat double precision, \
-                 rcat_err double precision, \
+                 usnoref char(25) NULL references " + self.schemaName + ".matchedUSNOBObjects(usnoref), \
+                 usnoref_int bigint NULL references " + self.schemaName + ".matchedUSNOBObjects(usnoref_int), \
+                 apassref bigint NULL references " + self.schemaName + ".matchedAPASSObjects(apassref), \
                  pos spoint NOT NULL \
                  );"
         self.db.execute(cmd)
@@ -255,6 +305,8 @@ class postgresql_skycam_mine():
         self.db.create_index(self.schemaName + ".sources", "pos", "idx_sources_pos", spatial=True)
         self.db.create_index(self.schemaName + ".matchedUSNOBObjects", "usnoref_int", "idx_matchedUSNOBObjects_usnoref_int")
         self.db.create_index(self.schemaName + ".matchedUSNOBObjects", "pos", "idx_matchedUSNOBObjects_pos", spatial=True)
+        self.db.create_index(self.schemaName + ".matchedAPASSObjects", "apassref", "idx_matchedAPASSObjects_apassref")
+        self.db.create_index(self.schemaName + ".matchedAPASSObjects", "pos", "idx_matchedAPASSObjects_pos", spatial=True)        
 
     ###
     ### VIEWS AND FUNCTIONS
@@ -263,6 +315,11 @@ class postgresql_skycam_mine():
         cmd = "CREATE VIEW " + self.schemaName + ".countUniqueMatchedSourcesToUSNOB AS \
                    SELECT usnoref, count(*) as num FROM " + self.schemaName + ".sources GROUP BY usnoref"
         self.db.execute(cmd) 
+        
+    def _makeView_countMatchedAPASSSources(self):
+        cmd = "CREATE VIEW " + self.schemaName + ".countUniqueMatchedSourcesToAPASS AS \
+                   SELECT apassref, count(*) as num FROM " + self.schemaName + ".sources GROUP BY apassref"
+        self.db.execute(cmd)         
 
     def _makeFunction_getNumberOfObservationsByUSNOBRef(self):
         cmd = "CREATE FUNCTION " + self.schemaName + ".getNumberOfObservationsUSNOB(param1 varchar) RETURNS integer AS $$ \
@@ -271,9 +328,17 @@ class postgresql_skycam_mine():
                    END; \
                    $$ LANGUAGE plpgsql;"
         self.db.execute(cmd) 
+        
+    def _makeFunction_getNumberOfObservationsByUSNOBRef(self):
+        cmd = "CREATE FUNCTION " + self.schemaName + ".getNumberOfObservationsAPASS(param1 varchar) RETURNS integer AS $$ \
+                   BEGIN \
+                       RETURN \"SELECT num FROM " + self.schemaName + ".countUniqueMatchedSourcesToAPASS WHERE usnoref = '$1'\"; \
+                   END; \
+                   $$ LANGUAGE plpgsql;"
+        self.db.execute(cmd)         
 
     ###
-    ### DEBUG FUNCTIONS
+    ### DEBUG DUMP FUNCTIONS
     ###
     def dumpTableSampleRecord(self):
         '''
@@ -291,7 +356,7 @@ class postgresql_skycam_mine():
             for idx, i in enumerate(res1):
                 print " ", i[0], ":", res2[0][idx]
         else:
-            print "TABLE EMPTY"
+            print "  TABLE EMPTY"
         print "\n --------------"
         print " |images table|"
         print " --------------\n"
@@ -303,7 +368,7 @@ class postgresql_skycam_mine():
             for idx, i in enumerate(res1):
                 print " ", i[0], ":", res2[0][idx]
         else:
-            print "TABLE EMPTY"
+            print "  TABLE EMPTY"
         print "\n ---------------------------"
         print " |matchedUSNOBObjects table|"
         print " ---------------------------\n"
@@ -315,7 +380,19 @@ class postgresql_skycam_mine():
             for idx, i in enumerate(res1):
                  print " ", i[0], ":", res2[0][idx]
         else:
-            print "TABLE EMPTY"
+            print "  TABLE EMPTY"
+        print "\n ---------------------------"
+        print " |matchedAPASSObjects table|"
+        print " ---------------------------\n"
+        cmd = "SELECT column_name FROM information_schema.columns WHERE table_schema = '" + self.schemaName + "' AND table_name='matchedapassobjects'"
+        res1 = self.db.read(cmd).fetchall()
+        cmd = "SELECT * FROM " + self.schemaName + ".matchedapassobjects LIMIT 1"
+        res2 = self.db.read(cmd).fetchall()
+        if len(res2) > 0:
+            for idx, i in enumerate(res1):
+                 print " ", i[0], ":", res2[0][idx]
+        else:
+            print "  TABLE EMPTY"
         print 
 
     def dumpTableRowCount(self):
@@ -336,4 +413,9 @@ class postgresql_skycam_mine():
         res = self.db.read(cmd)
         for i in res.fetchall():
             self.logger.info("(postgresql_skycam_mine.dumpTableRowCount) " + self.schemaName + ".matchedUSNOBObjects table now has " + str(i[0]) + " entries")
+            
+        cmd = "SELECT count(*) FROM " + self.schemaName + ".matchedAPASSObjects as count;"
+        res = self.db.read(cmd)
+        for i in res.fetchall():
+            self.logger.info("(postgresql_skycam_mine.dumpTableRowCount) " + self.schemaName + ".matchedAPASSbjects table now has " + str(i[0]) + " entries")            
 

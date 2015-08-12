@@ -16,21 +16,21 @@ import shutil
 from errors import errors
 from FITSFile import FITSFile
 from pipeline import *
-from util import compress_files, decompress_files, sort_image_directory_UTC, sf
+from util import compress_files, decompress_files, sort_image_directory_UTC, sf, zip_output_files_in_directory
 from archive import archive
 
 class process():
     def __init__(self, params):
-        self.params     = self._load_params(params)
-        self.logger     = self._setup_logging()
-        self.err        = self._setup_errors()
+        self.params             = self._load_params(params)
+        self.logger             = self._setup_logging()
+        self.err                = self._setup_errors()
         self._add_stream_logging_handler()
         self._create_output_dir()
         self._add_file_logging_handler()
         
     def _add_file_logging_handler(self):
         # now that we have an res directory, add a file handler to logger object
-        fh = logging.FileHandler(self.params['resPath'] + "res.log")
+        fh = logging.FileHandler(self.params['resPath'] + "log")
         fh.setLevel(logging.DEBUG)
 
         ## set logging format
@@ -52,17 +52,22 @@ class process():
         ## add handlers to logging object
         self.logger.addHandler(ch)
         
+    def _purge_output_dir(self, skipTarFiles=False):
+        for i in os.listdir(self.params['resPath']): 
+            if skipTarFiles and "tar" in i:
+                continue
+            os.remove(self.params['resPath'] + i)   
+        
     def _create_output_dir(self):
         # create res directory to store metadata
         if os.path.exists(self.params['resPath']) is True:
             if self.params['clobber'] is True:
-                for i in os.listdir(self.params['resPath']):    
-                    os.remove(self.params['resPath'] + i)
-                os.rmdir(self.params['resPath'])
+                self._purge_output_dir()
             else:
                 self.err.setError(-13)
                 self.err.handleError()
-        os.mkdir(self.params['resPath'])
+        else:
+            os.mkdir(self.params['resPath'])
         
     def _load_params(self, in_params):
         # load and convert unicode json string into dict of strings
@@ -80,10 +85,10 @@ class process():
 	if not self.params['skipArchive']:
             # retrieve images from lt-archive
             self.logger.info("(process.run_async) retrieving images from archive")
-            ltarchive = archive(self.params['path_pw_list'], self.params['archive_credentials_id'], self.err, self.logger)
+            ltarchive = archive(self.params['path_pw_list'], self.params['archive_credentials_id'], self.params['skycam_lup_db_credentials_id'], self.err, self.logger)
             
             ## search for images matching criteria
-            MySQLLogFile = self.params['resPath'] + "res.skycamfiles"
+            MySQLLogFile = self.params['resPath'] + "skycamfiles"
             ltarchive.getMySQLLog(self.params['resPath'], "skycam", "skycam", self.params['dateFrom'], self.params['dateTo'], self.params['instrument'], MySQLLogFile) 
             
             ## get the data
@@ -108,6 +113,11 @@ class process():
         # log error code
         with open(self.params['resPath'] + 'res.exitcode', 'w') as f:
             f.write(str(self.err.getError()))
+            
+        # zip files in directory and purge res dir
+        archive_name = self.params['dateFrom'].replace(" ", "T").replace("-", "").replace(":", "") + ".tar"
+        zip_output_files_in_directory(self.params['resPath'], archive_name, self.err, self.logger)      
+        self._purge_output_dir(skipTarFiles=True)
 
         elapsed = (time.time() - startProcessTime)
         self.logger.info("(process.run_async) child process finished in " + str(round(elapsed)) + "s")
@@ -117,20 +127,20 @@ class process():
         
         pipe = pipeline(self.params, self.err, self.logger)
         
-        UT_time_end_iter = time.time()     
+        UT_time_end_iter = time.time() - (60*3600)
         current_lag = 0
         while True:
             UT_time_end = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(UT_time_end_iter))  
             UT_time_st_iter = UT_time_end_iter - self.params['t_sync_check']             
             UT_time_st  = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(UT_time_st_iter)) 
             self.logger.info("(process.run_sync) searching for files between " + UT_time_st + " and " + UT_time_end)
-            
+           
             startProcessTime = time.time()
 
             try:            
                 # retrieve latest images from lt-archive
                 self.logger.info("(process.run) retrieving latest images from archive")
-                ltarchive = archive(self.params['path_pw_list'], self.params['archive_credentials_id'], self.err, self.logger)
+                ltarchive = archive(self.params['path_pw_list'], self.params['archive_credentials_id'], self.params['skycam_lup_db_credentials_id'], self.err, self.logger)
                 
                 ## search for images matching criteria
                 MySQLLogFile = self.params['resPath'] + "res.skycamfiles"
@@ -150,6 +160,11 @@ class process():
                         
                     # run pipeline
                     pipe.run(images) 
+                      
+                    # zip files in directory and purge res dir
+                    archive_name = UT_time_st.replace(" ", "").replace("-", "").replace(":", "") + ".tar"
+                    zip_output_files_in_directory(self.params['resPath'], archive_name, self.err, self.logger)        
+                    self._purge_output_dir(skipTarFiles=True)
                 else:
                     self.logger.info("(process.run_sync) no files found for this time range, continuing")
             except RuntimeError:

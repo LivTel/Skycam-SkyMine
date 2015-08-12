@@ -36,59 +36,68 @@ class pipeline():
         '''
         self.logger.info("(pipeline.run) Starting run")
 
+        doCatQuery = True                                                                                                  # this keeps track of whether we need to perform a new catalogue query
+        valid_images = []
         for idx, f in enumerate(images):
             self.logger.info("(pipeline.run) processing file " + str(idx+1) + " of " + str(len(images)) + " (" + os.path.basename(f) + ")")
             im = FITSFile(f, self.err) 
             im.openFITSFile()
-            im.getHeaders(0)
-            
-            doCatQuery = True                                                                                           # this keeps track of whether we need to perform a new catalogue query
-            if not self._checkPointingChange(im):                                                                       # checks both pointing hasn't changed and file has valid WCS
-                self._extractSources(f, im)                                                                             # extract sources
-                matchedSources, unmatchedSources = self._XMatchSources(f, im, doCatQuery, cat=self.params['cat'])       # catalogue cross matching 
-                if matchedSources is not None and unmatchedSources is not None:
-                    magDifference, BRcolour, ZP = self._calibrateZP(matchedSources, cat=self.params['cat'])             # zeropoint calculation
-                    if self.params['storeToDB']:
-                        self._storeToPostgresSQLDatabase(matchedSources, unmatchedSources)                              # database storage
-                    if self.params['makePlots']:
-                        plotZPCalibration(magDifference, BRcolour, ZP,                                                  # plots
-                                          float(self.params['lowerColourLimit']), 
-                                          float(self.params['upperColourLimit']), 
-                                          self.logger, 
-                                          hard=True, 
-                                          outImageFilename=self.params['resPath'] + os.path.basename(f) + ".calibration.png", 
-                                          outDataFilename=self.params['resPath'] + os.path.basename(f) + ".data.calibration", 
-                                          )
-                        plotMollweide(images, 
-                                      self.err, 
-                                      self.logger, 
-                                      bins=[30,20], 
-                                      hard=True, 
-                                      outImageFilename=self.params['resPath'] + os.path.basename(f) + ".mollweide.png", 
-                                      outDataFilename=self.params['resPath'] + os.path.basename(f) + ".data.mollweide"
-                                    )
-                doCatQuery = False
-            else:
-                doCatQuery = True
-            self.lastPointing = self._getPointing(im)
+            im.getHeaders(0)     
+            if self._hasValidWCS(im):                                                                                       # checks that we have a valid WCS
+                if not self._hasPointingChanged(im):                                                                        # checks that pointing hasn't changed
+                    self._extractSources(f, im)                                                                             # extract sources
+                    matchedSources, unmatchedSources = self._XMatchSources(f, im, doCatQuery, cat=self.params['cat'])       # catalogue cross matching 
+                    if matchedSources is not None and unmatchedSources is not None:
+                        magDifference, BRcolour, ZP = self._calibrateZP(matchedSources, cat=self.params['cat'])             # zeropoint calculation
+                        if self.params['storeToDB']:
+                            self._storeToPostgresSQLDatabase(matchedSources, unmatchedSources, cat=self.params['cat'])      # database storage
+                        if self.params['makePlots']:
+                            plotZPCalibration(magDifference, BRcolour, ZP,                                                  # plots
+                                              float(self.params['lowerColourLimit']), 
+                                              float(self.params['upperColourLimit']), 
+                                              self.logger, 
+                                              hard=True, 
+                                              outImageFilename=self.params['resPath'] + os.path.basename(f) + ".calibration.png", 
+                                              outDataFilename=self.params['resPath'] + os.path.basename(f) + ".data.calibration", 
+                                              )
+                    doCatQuery = False
+                    valid_images.append(f)
+                else:                                                                                                       # we skip processing the file if the pointing has changed
+                    doCatQuery = True
+                self.lastPointing = self._getPointing(im)
             im.closeFITSFile()
-                    
+
+        if len(valid_images) == 0:
+            self.err.setError(14)
+            self.err.handleError()    
+        else:
+            if self.params['makePlots']:            
+                plotMollweide(valid_images, 
+                              self.err, 
+                              self.logger, 
+                              bins=[30,20], 
+                              hard=True, 
+                              outImageFilename=self.params['resPath'] + "mollweide.png", 
+                              outDataFilename=self.params['resPath'] + "data.mollweide"
+                              )
+
         self.logger.info("(pipeline.run) Finished run")
         
-    def _getPointing(self, in_FITS_im):
+    def _hasValidWCS(self, in_FITS_im):
         validWCSKeys = {"CRVAL1", "CRVAL2", "CRPIX1", "CRPIX2", "CD1_1", "CD1_2", "CD2_1", "CD2_2", "RA_CENT", "DEC_CENT", "ROTSKYPA"}
-        
-        # check the image has valid WCS-related headers
         hasValidWCS = True
         for key in validWCSKeys:
             if not in_FITS_im.headers.has_key(key):
                 hasValidWCS = False
                 self.err.setError(1)
                 self.err.handleError()
-                return False    
+                return False  
+        return True
+        
+    def _getPointing(self, in_FITS_im):
         return [in_FITS_im.headers["RA_CENT"], in_FITS_im.headers["DEC_CENT"]]
         
-    def _checkPointingChange(self, in_FITS_im):
+    def _hasPointingChanged(self, in_FITS_im):
         pointingChanged = False
         if not self.lastPointing:   # special case (if it's the first file in the list)
             pass
@@ -123,7 +132,7 @@ class pipeline():
             return False
     
         ## check number of catalogue sources
-        numExtSources = max(catdata["NUMBER"].tonumpy())
+        numExtSources = catdata.nrows
         self.logger.info("(pipeline._extractSources) " + str(numExtSources) + " legit sources in image (" + str(int(self.params['minSources'])) + ")")
         if numExtSources < int(self.params['minSources']):
             self.err.setError(4)
@@ -189,12 +198,12 @@ class pipeline():
         searchRadius = self.params['fieldSize']
 
         # establish if we need to query/requery the database
-        ## do we have a previous reference catalogue defined?
+        ## do we have information of this pointing defined aready?
         
         thisPointing = self._getPointing(in_FITS_im)
         ## ..check that the pointing hasn't changed
         if doCatQuery:
-            self.logger.info("(pipeline._XMatchSources) No previous reference catalogue or pointing has changed since last image.")
+            self.logger.info("(pipeline._XMatchSources) No previous pointing information or pointing has changed since last image.")
             if cat == "APASS":
                 self.logger.info("(pipeline._XMatchSources) Querying APASS catalogue at " + in_FITS_im.headers['RA'] + " " 
                                  + in_FITS_im.headers['DEC'] + " with a search radius of " 
@@ -228,11 +237,9 @@ class pipeline():
         sExCat = sExCatalogue(self.err, self.logger)
         sExCat.read(in_filename)
 
+        # do cross match
         self.logger.info("(pipeline._XMatchSources) Cross matching catalogues with a tolerance of " + str(matchingTolerance*3600) + " arcsec")
-        if cat == "APASS":
-            matches = pysm.spherematch(sExCat.RA, sExCat.DEC, self.RefCatAll.RA, self.RefCatAll.DEC, tol=matchingTolerance, nnearest=1)
-        elif cat == "USNOB":
-            matches = pysm.spherematch(sExCat.RA, sExCat.DEC, self.RefCatAll.RA, self.RefCatAll.DEC, tol=matchingTolerance, nnearest=1)
+        matches = pysm.spherematch(sExCat.RA, sExCat.DEC, self.RefCatAll.RA, self.RefCatAll.DEC, tol=matchingTolerance, nnearest=1)
                 
         sExCatMatchedIndexes = matches[0]
         RefCatMatchedIndexes = matches[1]
@@ -374,13 +381,14 @@ class pipeline():
 
         return magDifference, BRcolour, (c, m)
 
-    def _storeToPostgresSQLDatabase(self, matchedSources, unmatchedSources):
-        '''www/js/jquery-simple-datetimepicker
+    def _storeToPostgresSQLDatabase(self, matchedSources, unmatchedSources, cat):
+        '''
         send information to database.
         '''
+
     	# set up database connection
         try:
-            ip, port, username, password = rpf(self.params['path_pw_list'], self.params['skycam_db_credentials_id'])
+            ip, port, username, password = rpf(self.params['path_pw_list'], self.params['skycam_cat_db_credentials_id'])
             port = int(port)
         except IOError:
             self.err.setError(-19)
@@ -395,10 +403,6 @@ class pipeline():
     	schemaName = self.params['schemaName']
     	mine = postgresql_skycam_mine(skycamDB, schemaName, self.logger, self.err)
 
-        if self.params['destroyMine']:
-            self.logger.info("(pipeline._storeToPostgresSQLDatabase) Destroyed mine.")
-            mine.destroy()
-
     	if not skycamDB.check_schema_exists(schemaName):
             mine.setup()
 
@@ -409,7 +413,7 @@ class pipeline():
 
         # process images by filename
         for i in imageFilenames:
-            ## CLOBBERING. NOTE: entries into matchedUSNOBTable are not removed
+            ## CLOBBERING. NOTE: entries into matched* tables are not removed
             ### establish if entry exists for this filename
             query = "SELECT count(*) FROM " + schemaName + ".images WHERE filename = '" + str(os.path.basename(i)) + "'"
             res = skycamDB.read(query).fetchone()
@@ -430,18 +434,30 @@ class pipeline():
             im_unmatchedSources = list(source for source in unmatchedSources if source.filename == i)
             im_matchedSources = list(source for source in matchedSources if source.filename == i)
 
-            ## create list of unique USNOB targets from matched sources list
+            ## create list of unique targets from matched sources list
             existing_refs = []
-            USNOBCatUnique = USNOBCatalogue(self.err, self.logger)
-            for src in im_matchedSources:
-                if src.USNOBCatREF not in existing_refs:
-                    existing_refs.append(src.USNOBCatREF)
-                    USNOBCatUnique.insert(usnobref=src.USNOBCatREF, ra=src.USNOBCatRA, dec=src.USNOBCatDEC, epoch=src.USNOBCatEPOCH, r2mag=src.USNOBCatR2MAG, b2mag=src.USNOBCatB2MAG) 
-
-            ## insert image, matchedUSNOBObjects and sources into mine
+            if cat == "USNOB":
+                USNOBCatUnique = USNOBCatalogue(self.err, self.logger)
+                for src in im_matchedSources:
+                    if src.USNOBCatREF not in existing_refs:
+                        existing_refs.append(src.USNOBCatREF)
+                        USNOBCatUnique.insert(usnobref=src.USNOBCatREF, ra=src.USNOBCatRA, dec=src.USNOBCatDEC, epoch=src.USNOBCatEPOCH, r2mag=src.USNOBCatR2MAG, b2mag=src.USNOBCatB2MAG) 
+            elif cat == "APASS":
+                APASSCatUnique = APASSCatalogue(self.err, self.logger)
+                for src in im_matchedSources:
+                    if src.APASSCatREF not in existing_refs:
+                        existing_refs.append(src.APASSCatREF)
+                        APASSCatUnique.insert(apassref=src.APASSCatREF, ra=src.APASSCatRA, dec=src.APASSCatDEC, raerr=src.APASSCatRAERR, decerr=src.APASSCatDECERR, vmag=src.APASSCatVMAG, 
+                                         bmag=src.APASSCatBMAG, gmag=src.APASSCatGMAG, rmag=src.APASSCatRMAG, imag=src.APASSCatIMAG, vmagerr=src.APASSCatVMAGERR, bmagerr=src.APASSCatBMAGERR, 
+                                         gmagerr=src.APASSCatGMAGERR, rmagerr=src.APASSCatRMAGERR, imagerr=src.APASSCatIMAGERR) 
+                        
+            ## insert image, matched*Objects and sources into mine
 	    img_id = mine.insertImage(i)
             if img_id is not None:
-                mine.insertMatchedUSNOBObjects(USNOBCatUnique)
+                if cat == "USNOB":
+                    mine.insertMatchedUSNOBObjects(USNOBCatUnique)
+                elif cat == "APASS":   
+                    mine.insertMatchedAPASSObjects(APASSCatUnique)
                 mine.insertSources(i, img_id, im_matchedSources)
                 mine.insertSources(i, img_id, im_unmatchedSources)
 

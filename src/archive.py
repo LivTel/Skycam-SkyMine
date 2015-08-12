@@ -18,26 +18,37 @@ class archive:
     '''
     a class for querying lt-archive
     '''
-    def __init__(self, pw_file, pw_file_id, err, logger):
+    def __init__(self, pw_file, archive_pw_file_id, skycam_lup_pw_file_id, err, logger):
         self.err	= err
         self.logger	= logger
+        # archive
         try:
-            self.ip, self.port, self.username, self.password = rpf(pw_file, pw_file_id);
-            self.port = int(self.port)
+            self.archive_ip, self.archive_port, self.archive_username, self.archive_password = rpf(pw_file, archive_pw_file_id);
+            self.archive_port = int(self.archive_port)
         except IOError:
             self.err.setError(-15)
             self.err.handleError()       
         except TypeError:
             self.err.setError(-16)
-            self.err.handleError()              
-
+            self.err.handleError()    
+            
+        # skycam lookup
+        try:
+            tmp, tmp, self.sky_lup_username, self.sky_lup_password = rpf(pw_file, skycam_lup_pw_file_id);
+        except IOError:
+            self.err.setError(-15)
+            self.err.handleError()       
+        except TypeError:
+            self.err.setError(-21)
+            self.err.handleError()
+            
     def SSHquery(self, query):
         try:
             client = paramiko.SSHClient()
             client.load_system_host_keys()
             client.set_missing_host_key_policy(paramiko.WarningPolicy())
     
-            client.connect(self.ip, port=self.port, username=self.username, password=self.password)
+            client.connect(self.archive_ip, port=self.archive_port, username=self.archive_username, password=self.archive_password)
  
             stdin, stdout, stderr = client.exec_command(query)
             exit_status = stdout.channel.recv_exit_status()
@@ -55,13 +66,13 @@ class archive:
 
         # generate log
         self.logger.info("(archive.getMySQLLog) running MySQL query on archive")
-        query = 'mysql skycam -u ' + mySQLUser + ' --password=' + mySQLPass + ''' -e 'SELECT __filename as filename, `DATE-OBS` as date FROM fitsheaders WHERE (str_to_date(`DATE-OBS`, "%Y-%m-%dT%H:%i:%s") between "''' + dateFrom + '" and "' + dateTo + '") AND (INSTRUME = "' + instrument + '") ORDER BY date ASC LIMIT 1 INTO OUTFILE "' + thisLogPath + '''" fields terminated by ",";' '''
+        query = 'mysql skycam -u ' + self.sky_lup_username + ' --password=' + self.sky_lup_password + ''' -e 'SELECT __filename as filename, `DATE-OBS` as date FROM fitsheaders WHERE (str_to_date(`DATE-OBS`, "%Y-%m-%dT%H:%i:%s") between "''' + dateFrom + '" and "' + dateTo + '") AND (INSTRUME = "' + instrument + '") ORDER BY date ASC INTO OUTFILE "' + thisLogPath + '''" fields terminated by ",";' '''
         self.SSHquery(query)
 
         # retrieve log
         try:
-            t = paramiko.Transport((self.ip, self.port))
-            t.connect(username=self.username, password=self.password)
+            t = paramiko.Transport((self.archive_ip, self.archive_port))
+            t.connect(username=self.archive_username, password=self.archive_password)
             self.logger.info("(archive.getMySQLLog) retrieving MySQL log from archive")
             sftp = paramiko.SFTPClient.from_transport(t)
             sftp.get(thisLogPath, outputFilename)
@@ -77,8 +88,8 @@ class archive:
         n.b. this has a hard-coded path to the data on lt-archive
         '''
         try:
-            t = paramiko.Transport((self.ip, self.port))
-            t.connect(username=self.username, password=self.password)
+            t = paramiko.Transport((self.archive_ip, self.archive_port))
+            t.connect(username=self.archive_username, password=self.archive_password)
             sftp = paramiko.SFTPClient.from_transport(t)
  
             f = open(pathToMySQLLog, 'r')
