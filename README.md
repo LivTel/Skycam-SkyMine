@@ -7,18 +7,18 @@ refactored into Python.
 
 # Installing
 
-You will first need to edit etc/pipe/pipeline.ini and etc/pipe/PW\_LIST 
-accordingly. The pipeline is then invoked from the wrapper 
-script src/run_pipe.py. 
+You will first need to edit the system specific information (paths etc.) in etc/pipe/pipeline.ini, etc/pipe/PW\_LIST and etc/sex/params/*.sex files 
+accordingly. 
 
-You will need to make sure you have a catalogue and output database 
-installed/running. See the db/ and cat/ folders for more information regarding
-this.
+You will also need to make sure you have a catalogue and output database 
+installed/running. See the db/ and cat/ folders for more information regarding this.
 
 If using the USNOB catalogue, you will need to build the query_usnob binary. 
 This can be done from the src/ folder with:
 
 `make usnob`
+
+The pipeline is then invoked from the wrapper script src/run_pipe.py. 
 
 # Running the pipeline
 
@@ -40,9 +40,9 @@ For a description of available runtime options:
 >    --o               overwrite res folder?  
 >    --s               skip archive search and use mock data  
 >    --pl              make plots  
+>    --d               run daemon  
   
 >  Postgres database options:  
 >    --sdb             store to db?  
 >    --odb             overwrite entries with existing filename in db?  
->    --dm              destroy mine before committing  
 

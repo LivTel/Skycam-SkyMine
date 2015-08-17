@@ -1,6 +1,6 @@
-PARAMETERS_NAME	 /skycam/SkyMine/etc/sex/T.param
-FILTER_NAME	 /skycam/SkyMine/etc/sex/default.conv
-STARNNW_NAME     /skycam/SkyMine/etc/sex/default.nnw
+PARAMETERS_NAME	 /mnt/NAS/devel/skycam/Skycam-SkyMine/etc/sex/T.param
+FILTER_NAME	 /mnt/NAS/devel/skycam/Skycam-SkyMine/etc/sex/default.conv
+STARNNW_NAME     /mnt/NAS/devel/skycam/Skycam-SkyMine/etc/sex/default.nnw
 CATALOG_TYPE     ASCII_HEAD
 DETECT_MINAREA   5
 THRESH_TYPE      RELATIVE

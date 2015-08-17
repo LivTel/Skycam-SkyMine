@@ -20,7 +20,7 @@ from util import read_ini
 if __name__ == "__main__":
     parser = optparse.OptionParser()
     group1 = optparse.OptionGroup(parser, "General options")
-    group1.add_option('--pi', action='store', default='../etc/pipe/pipeline.ini', type=str, dest='pipeCfgPath', help='path to pipeline config file')
+    group1.add_option('--pi', action='store', default='../etc/pipe/pipeline.ini.rmb-tower', type=str, dest='pipeCfgPath', help='path to pipeline config file')
     group1.add_option('--from', action='store', default='2013-06-10 23:45:00', dest='dateFrom', help='ASYNC ONLY - process images from date (YYYY-MM-DD HH:MM:SS)')
     group1.add_option('--to', action='store', default='2013-06-10 23:59:00', dest='dateTo', help='ASYNC ONLY - process images to date (YYYY-MM-DD HH:MM:SS)')
     group1.add_option('--i', action='store', default='SkyCamZ', dest='instrument', help='instrument (SkyCamT|SkyCamZ)')
@@ -87,6 +87,7 @@ if __name__ == "__main__":
     try:
         params['rootPath']                      = str(pipe_cfg['paths']['path_root'].rstrip("/") + "/") 
         params['resRootPath']                   = str(pipe_cfg['paths']['path_res'].rstrip("/") + "/") 
+        params['catPath']                       = str(pipe_cfg['paths']['path_cat'].rstrip("/") + "/") 
         params['path_pw_list']                  = str(pipe_cfg['paths']['path_pw_list'])
         params['cat']                           = str(pipe_cfg['general']['xmatch_cat'])
         params['processes']                     = int(pipe_cfg['general']['max_processes'])
@@ -128,9 +129,9 @@ if __name__ == "__main__":
     params['srcPath'] = params['rootPath'] + 'src/'
     params['etcPath'] = params['rootPath'] + 'etc/'
     params['tmpPath'] = params['rootPath'] + 'tmp/'
-
-    params['tmpMockPath'] = params['tmpPath'] + 'mock/'
-    params['catUSNOBPath'] = params['rootPath'] + 'cat/usnob/'
+    
+    params['tmpMockPath']   = params['tmpPath'] + 'mock/'
+    params['catUSNOBPath']  = params['catPath'] + 'usnob/'
 
     # input sanity checks
     ## CATALOGUE

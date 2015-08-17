@@ -87,7 +87,7 @@ class pipeline():
         validWCSKeys = {"CRVAL1", "CRVAL2", "CRPIX1", "CRPIX2", "CD1_1", "CD1_2", "CD2_1", "CD2_2", "RA_CENT", "DEC_CENT", "ROTSKYPA"}
         hasValidWCS = True
         for key in validWCSKeys:
-            if not in_FITS_im.headers.has_key(key):
+            if key not in in_FITS_im.headers:
                 hasValidWCS = False
                 self.err.setError(1)
                 self.err.handleError()
@@ -461,6 +461,6 @@ class pipeline():
                 mine.insertSources(i, img_id, im_matchedSources)
                 mine.insertSources(i, img_id, im_unmatchedSources)
 
-        mine.dumpTableRowCount()	# DEBUG
-        mine.dumpTableSampleRecord()	# DEBUG
+        #mine.dumpTableRowCount()	# DEBUG
+        #mine.dumpTableSampleRecord()	# DEBUG
  
