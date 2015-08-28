@@ -6,10 +6,9 @@ obs_day_end:            09:00:00        ; ASYNC ONLY - end of observational day 
 t_sync_check:           300             ; SYNC ONLY - how often to check for new files (s)
 
 [paths]
-path_root:              /mnt/NAS/devel/skycam/Skycam-SkyMine/                   ; path to root of skycam directory
-path_res:               /mnt/NAS/devel/skycam/jobs/                             ; path to root of results directory
-path_cat:               /mnt/NAS/devel/skycam/Skycam-SkyMine/cat/               ; path to catalogue directory
-path_pw_list:           /mnt/NAS/devel/skycam/Skycam-SkyMine/etc/pipe/PW_LIST   ; path to password list
+path_root_skymine:      /mnt/NAS/devel/skycam/Skycam-SkyMine/                   ; path to root of skycam directory
+path_root_res:          /mnt/NAS/devel/skycam/jobs/                             ; path to root of results directory
+path_pw_list:           /mnt/NAS/devel/skycam/Skycam-SkyMine/etc/pipe/PW_LIST   ; path to password l
 
 [skycamt_params]
 pointing_diff_thresh:    1.0                                                    ; max pointing angle difference (deg)
@@ -31,6 +30,7 @@ limiting_mag:            12                                                     
 field_size:              21.0                                                   ; Size of field (deg)
 schema_name:             skycamt                                                ; Schema name in database
 min_num_matched_sources: 500                                                    ; Minimum number of matched sources per frame
+max_num_sources_xmatch:  99999999                                               ; Maximum number of sources to pull down from catalogue for crossmatching
 
 [skycamz_params]
 pointing_diff_thresh:    1.0                                                    ; max pointing angle difference (deg)
@@ -52,17 +52,14 @@ limiting_mag:            18                                                     
 field_size:              1.0                                                    ; Size of field (deg)
 schema_name:             skycamz                                                ; Schema name in database
 min_num_matched_sources: 100                                                    ; Minimum number of matched sources per frame
+max_num_sources_xmatch:  99999999                                               ; Maximum number of sources to pull down from catalogue for crossmatching
 
 [lt_archive]
-pw_file_entry_id:       archive ; pw list entry id where credentials can be found
+pw_file_entry_id:       archive     ; pw list entry id where credentials can be found
 
-[apass_catalogue]
-pw_file_entry_id:       apass   ; pw list entry id where credentials can be found
-db_name:                apass   ; database name
+[catalogue]                         ; this machine hosts the webservices for the usnob and apass catalogues
+pw_file_entry_id:       cat         ; pw list entry id where credentials can be found
 
 [skycam_lookup]
-pw_file_entry_id:       sky_lup ; pw list entry id where credentials can be found
+pw_file_entry_id:       sky_lup     ; pw list entry id where credentials can be found
 
-[skycam_catalogue]
-pw_file_entry_id:       sky_cat ; pw list entry id where credentials can be found
-db_name:                skycam  ; database name

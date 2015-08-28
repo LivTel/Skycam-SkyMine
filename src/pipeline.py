@@ -195,6 +195,7 @@ class pipeline():
 
         matchingTolerance = self.params['matchingTolerance']
         limitingMag = self.params['limitingMag']
+        maxNumSourcesXMatch = self.params['maxNumSourcesXMatch']
         searchRadius = self.params['fieldSize']
 
         # establish if we need to query/requery the database
@@ -209,27 +210,20 @@ class pipeline():
                                  + in_FITS_im.headers['DEC'] + " with a search radius of " 
                                  + str(searchRadius + float(self.params['pointingDiffThresh'])) + ", " 
                                  + str(searchRadius + float(self.params['pointingDiffThresh'])) + " deg")
-                self.RefCatAll.query(self.params['path_pw_list'], 
-                                self.params['apass_db_credentials_id'], 
-                                self.params['apass_db_name'], 
-                                hms_2_deg(in_FITS_im.headers['RA']), 
-                                dms_2_deg(in_FITS_im.headers['DEC']), 
-                                searchRadius + self.params['pointingDiffThresh'], 
-                                limitingMag
-                                )
             elif cat == "USNOB":
                 self.logger.info("(pipeline._XMatchSources) Querying USNOB catalogue at " + in_FITS_im.headers['RA'] 
                                  + " " + in_FITS_im.headers['DEC'] + " with a search radius of " 
                                  + str(searchRadius + float(self.params['pointingDiffThresh'])) + ", " 
                                  + str(searchRadius + float(self.params['pointingDiffThresh'])) + " deg")
-                self.RefCatAll.query(self.params['resPath'] + os.path.basename(in_filename) + ".usnob", 
-                                self.params['binPath'], 
-                                self.params['catUSNOBPath'],
-                                in_FITS_im.headers['RA'], 
-                                in_FITS_im.headers['DEC'], 
-                                (searchRadius + self.params['pointingDiffThresh'])*60, 
-                                limitingMag
-                                )
+                
+            self.RefCatAll.query(self.params['path_pw_list'], 
+                        self.params['catalogue_credentials_id'], 
+                        hms_2_deg(in_FITS_im.headers['RA']), 
+                        dms_2_deg(in_FITS_im.headers['DEC']), 
+                        searchRadius + self.params['pointingDiffThresh'],
+                        limitingMag,
+                        maxNumSourcesXMatch
+                        )
         else:
             self.logger.info("(pipeline._XMatchSources) Pointing has not changed since last image. Using data from previous query")
 
@@ -296,7 +290,8 @@ class pipeline():
                                              APASSCatBMAGERR=self.RefCatAll.BMAGERR[RefCatMatchedIndexes[idx]],
                                              APASSCatGMAGERR=self.RefCatAll.GMAGERR[RefCatMatchedIndexes[idx]], 
                                              APASSCatRMAGERR=self.RefCatAll.RMAGERR[RefCatMatchedIndexes[idx]], 
-                                             APASSCatIMAGERR=self.RefCatAll.IMAGERR[RefCatMatchedIndexes[idx]])
+                                             APASSCatIMAGERR=self.RefCatAll.IMAGERR[RefCatMatchedIndexes[idx]],
+                                             APASSCatNOBS=self.RefCatAll.NOBS[RefCatMatchedIndexes[idx]])
                 ) 
         elif cat == "USNOB":
             for idx in range(len(sExCatMatchedIndexes)):
@@ -325,7 +320,10 @@ class pipeline():
                                              USNOBCatREF=self.RefCatAll.REF[RefCatMatchedIndexes[idx]], 
                                              USNOBCatRA=self.RefCatAll.RA[RefCatMatchedIndexes[idx]], 
                                              USNOBCatDEC=self.RefCatAll.DEC[RefCatMatchedIndexes[idx]], 
-                                             USNOBCatEPOCH=self.RefCatAll.EPOCH[RefCatMatchedIndexes[idx]], 
+                                             USNOBCatRAERR=self.RefCatAll.RAERR[RefCatMatchedIndexes[idx]], 
+                                             USNOBCatDECERR=self.RefCatAll.DECERR[RefCatMatchedIndexes[idx]],  
+                                             USNOBCatR1MAG=self.RefCatAll.R1MAG[RefCatMatchedIndexes[idx]], 
+                                             USNOBCatB1MAG=self.RefCatAll.B1MAG[RefCatMatchedIndexes[idx]],
                                              USNOBCatR2MAG=self.RefCatAll.R2MAG[RefCatMatchedIndexes[idx]], 
                                              USNOBCatB2MAG=self.RefCatAll.B2MAG[RefCatMatchedIndexes[idx]])
                 )        
@@ -396,7 +394,7 @@ class pipeline():
         except TypeError:
             self.err.setError(-20)
             self.err.handleError()     	
-   	skycamDB = database_postgresql(ip, port, username, password, self.params['skycam_db_name'], self.err)
+   	skycamDB = database_postgresql(ip, '5433', 'eng', '', 'skycam', self.err)
     	skycamDB.connect()
 
    	 # set up mine (& create schema if necessary)
@@ -441,15 +439,13 @@ class pipeline():
                 for src in im_matchedSources:
                     if src.USNOBCatREF not in existing_refs:
                         existing_refs.append(src.USNOBCatREF)
-                        USNOBCatUnique.insert(usnobref=src.USNOBCatREF, ra=src.USNOBCatRA, dec=src.USNOBCatDEC, epoch=src.USNOBCatEPOCH, r2mag=src.USNOBCatR2MAG, b2mag=src.USNOBCatB2MAG) 
+                        USNOBCatUnique.insert(usnobref=src.USNOBCatREF, ra=src.USNOBCatRA, dec=src.USNOBCatDEC, raerr=src.USNOBCatRAERR, decerr=src.USNOBCatDECERR, r1mag=src.USNOBCatR1MAG, b1mag=src.USNOBCatB1MAG, r2mag=src.USNOBCatR2MAG, b2mag=src.USNOBCatB2MAG) 
             elif cat == "APASS":
                 APASSCatUnique = APASSCatalogue(self.err, self.logger)
                 for src in im_matchedSources:
                     if src.APASSCatREF not in existing_refs:
                         existing_refs.append(src.APASSCatREF)
-                        APASSCatUnique.insert(apassref=src.APASSCatREF, ra=src.APASSCatRA, dec=src.APASSCatDEC, raerr=src.APASSCatRAERR, decerr=src.APASSCatDECERR, vmag=src.APASSCatVMAG, 
-                                         bmag=src.APASSCatBMAG, gmag=src.APASSCatGMAG, rmag=src.APASSCatRMAG, imag=src.APASSCatIMAG, vmagerr=src.APASSCatVMAGERR, bmagerr=src.APASSCatBMAGERR, 
-                                         gmagerr=src.APASSCatGMAGERR, rmagerr=src.APASSCatRMAGERR, imagerr=src.APASSCatIMAGERR) 
+                        APASSCatUnique.insert(apassref=src.APASSCatREF, ra=src.APASSCatRA, dec=src.APASSCatDEC, raerr=src.APASSCatRAERR, decerr=src.APASSCatDECERR, vmag=src.APASSCatVMAG, bmag=src.APASSCatBMAG, gmag=src.APASSCatGMAG, rmag=src.APASSCatRMAG, imag=src.APASSCatIMAG, vmagerr=src.APASSCatVMAGERR, bmagerr=src.APASSCatBMAGERR, gmagerr=src.APASSCatGMAGERR, rmagerr=src.APASSCatRMAGERR, imagerr=src.APASSCatIMAGERR, nobs=src.APASSCatNOBS) 
                         
             ## insert image, matched*Objects and sources into mine
 	    img_id = mine.insertImage(i)

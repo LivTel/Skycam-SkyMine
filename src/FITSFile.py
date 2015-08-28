@@ -12,9 +12,6 @@ import pyfits
 from errors import errors
 
 class FITSFile:
-    '''
-    a class for handling FITS files
-    '''
     def __init__(self, filepath, err):
         self.filePath	= filepath
 	self.err	= err

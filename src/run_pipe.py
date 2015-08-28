@@ -85,20 +85,17 @@ if __name__ == "__main__":
 
     # add to params dict
     try:
-        params['rootPath']                      = str(pipe_cfg['paths']['path_root'].rstrip("/") + "/") 
-        params['resRootPath']                   = str(pipe_cfg['paths']['path_res'].rstrip("/") + "/") 
-        params['catPath']                       = str(pipe_cfg['paths']['path_cat'].rstrip("/") + "/") 
+        params['rootPath']                      = str(pipe_cfg['paths']['path_root_skymine'].rstrip("/") + "/") 
+        params['resRootPath']                   = str(pipe_cfg['paths']['path_root_res'].rstrip("/") + "/") 
         params['path_pw_list']                  = str(pipe_cfg['paths']['path_pw_list'])
         params['cat']                           = str(pipe_cfg['general']['xmatch_cat'])
         params['processes']                     = int(pipe_cfg['general']['max_processes'])
         params['obs_day_start']                 = str(pipe_cfg['general']['obs_day_start'])
         params['obs_day_end']                   = str(pipe_cfg['general']['obs_day_end'])
         params['t_sync_check']                  = float(pipe_cfg['general']['t_sync_check'])
-        params['apass_db_name']                 = str(pipe_cfg['apass_catalogue']['db_name'])
-        params['skycam_db_name']                = str(pipe_cfg['skycam_catalogue']['db_name'])
         params['archive_credentials_id']        = str(pipe_cfg['lt_archive']['pw_file_entry_id'])
-        params['apass_db_credentials_id']       = str(pipe_cfg['apass_catalogue']['pw_file_entry_id'])
-        params['skycam_cat_db_credentials_id']  = str(pipe_cfg['skycam_catalogue']['pw_file_entry_id'])
+        params['catalogue_credentials_id']      = str(pipe_cfg['catalogue']['pw_file_entry_id'])
+        params['skycam_cat_db_credentials_id']  = str(pipe_cfg['catalogue']['pw_file_entry_id'])
         params['skycam_lup_db_credentials_id']  = str(pipe_cfg['skycam_lookup']['pw_file_entry_id'])
         # inst specific keys
         params['pointingDiffThresh']            = float(pipe_cfg[inst_cfg_header]['pointing_diff_thresh'])
@@ -120,6 +117,7 @@ if __name__ == "__main__":
         params['fieldSize']                     = float(pipe_cfg[inst_cfg_header]['field_size'])
         params['schemaName']                    = str(pipe_cfg[inst_cfg_header]['schema_name'])
         params['minNumMatchedSources']          = int(pipe_cfg[inst_cfg_header]['min_num_matched_sources'])
+        params['maxNumSourcesXMatch']           = int(pipe_cfg[inst_cfg_header]['max_num_sources_xmatch'])
     except KeyError, e:
         logger.info("[run_pipe.go] Key/section " + str(e) + " appears to be missing.")
         exit(0) 
@@ -131,7 +129,6 @@ if __name__ == "__main__":
     params['tmpPath'] = params['rootPath'] + 'tmp/'
     
     params['tmpMockPath']   = params['tmpPath'] + 'mock/'
-    params['catUSNOBPath']  = params['catPath'] + 'usnob/'
 
     # input sanity checks
     ## CATALOGUE

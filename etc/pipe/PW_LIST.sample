@@ -1,7 +1,6 @@
 # This is an example TSV password file used by SkyMine. 
 # 
-# id    ip	port	user	pw
-archive
-apass
-sky_lup -       -                
-sky_cat
+# id        ip  port    user    pw
+archive     -   -       -       -    
+cat         -   -       -       -            
+sky_lup     -   -       -       -

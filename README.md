@@ -7,18 +7,17 @@ refactored into Python.
 
 # Installing
 
-You will first need to edit the system specific information (paths etc.) in etc/pipe/pipeline.ini, etc/pipe/PW\_LIST and etc/sex/params/*.sex files 
+You will first need to edit the system specific information (paths etc.) 
+in etc/pipe/pipeline.ini, etc/pipe/PW\_LIST and etc/sex/params/*.sex files 
 accordingly. 
 
-You will also need to make sure you have a catalogue and output database 
-installed/running. See the db/ and cat/ folders for more information regarding this.
+You will need to make sure that the catalogue webservices are running.
 
-If using the USNOB catalogue, you will need to build the query_usnob binary. 
-This can be done from the src/ folder with:
+Catalogues are selected through the pipeline.ini file in etc/pipe/. 
+Generally, we use the APASS database which has a better colour match to 
+the unfiltered Skycam cameras. 
 
-`make usnob`
-
-The pipeline is then invoked from the wrapper script src/run_pipe.py. 
+The pipeline is invoked from the wrapper script src/run_pipe.py. 
 
 # Running the pipeline
 

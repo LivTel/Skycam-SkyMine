@@ -15,9 +15,6 @@ from errors import errors
 from util import read_password_file as rpf
 
 class archive:
-    '''
-    a class for querying lt-archive
-    '''
     def __init__(self, pw_file, archive_pw_file_id, skycam_lup_pw_file_id, err, logger):
         self.err	= err
         self.logger	= logger

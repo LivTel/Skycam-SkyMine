@@ -13,9 +13,6 @@
  
 # Logs and databases #
 ######################
-cat/apass/
-cat/usnob/
-db/skycam
 *.log
 *.sql
 *.db

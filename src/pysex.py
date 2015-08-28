@@ -10,9 +10,6 @@ import os, shutil
 import asciidata
 
 class pysex():
-    ''' 
-    bespoke skycam pipeline sExtractor class (based on pysex)
-    '''
     def __init__(self, f, data_path, path_to_conf_file, err, logger):
         self.f = f
         self.data_path = data_path

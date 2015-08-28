@@ -2,10 +2,11 @@
 name:		catalogue.py
 author:		rmb
 
-description: 	Catalogue class
+description: 	Catalogue classes
 '''
 import subprocess
 import os
+import json
 
 import asciidata
 import pywcs
@@ -15,12 +16,15 @@ from FITSFile import FITSFile
 from pysex import pysex
 from database import database_postgresql
 from util import read_password_file as rpf
+from ws import ws_catalogue as wsc
 
 class Catalogue():
     def __init__(self):  
         self.REF = []
         self.RA = []
         self.DEC = [] 
+        self.RAERR = []
+        self.DECERR = []  
         
     def insert(self):
         pass
@@ -31,8 +35,6 @@ class Catalogue():
 class APASSCatalogue(Catalogue):
     def __init__(self, err, logger):
         Catalogue.__init__(self) 
-        self.RAERR = []
-        self.DECERR = []  
         self.VMAG = []  
         self.BMAG = []          
         self.GMAG = []
@@ -42,11 +44,12 @@ class APASSCatalogue(Catalogue):
         self.BMAGERR = []
         self.GMAGERR = []
         self.RMAGERR = [] 
-        self.IMAGERR = []          
+        self.IMAGERR = []   
+        self.NOBS = []
         self.err = err
         self.logger = logger
         
-    def insert(self, apassref, ra, dec, raerr, decerr, vmag, bmag, gmag, rmag, imag, vmagerr, bmagerr, gmagerr, rmagerr, imagerr):
+    def insert(self, apassref, ra, dec, raerr, decerr, vmag, bmag, gmag, rmag, imag, vmagerr, bmagerr, gmagerr, rmagerr, imagerr, nobs):
         '''
         insert APASS object into catalogue
         '''
@@ -64,11 +67,12 @@ class APASSCatalogue(Catalogue):
         self.GMAGERR.append(gmagerr)
         self.BMAGERR.append(bmagerr)    
         self.RMAGERR.append(rmagerr)
-        self.IMAGERR.append(imagerr)          
+        self.IMAGERR.append(imagerr)    
+        self.NOBS.append(nobs)
 
-    def query(self, pw_file, pw_file_id, apass_db_name, raDeg, decDeg, searchRadius, limitingMag, appendToCat=True):
+    def query(self, pw_file, pw_file_id, raDeg, decDeg, searchRadius, limitingMag, maxNumSourcesXMatch, appendToCat=True):
         ''' 
-        query APASS database for objects satisfying specific criteria
+        do SCS on APASS catalogue
         '''
         try:
             ip, port, username, password = rpf(pw_file, pw_file_id)
@@ -80,88 +84,96 @@ class APASSCatalogue(Catalogue):
             self.err.setError(-18)
             self.err.handleError()  
             
-        APASSDB = database_postgresql(ip, port, username, password, apass_db_name, self.err)
-        APASSDB.connect()
+        # ws call outputs json
+        ws_cat = wsc(self.err, self.logger)
+        ws_cat.do_SCS(ip, port, 'apass', raDeg, decDeg, searchRadius, 'rmag', -1, limitingMag, 'distance', maxNumSourcesXMatch, 'json')
         
-        res = APASSDB.read("SELECT id, radeg, decdeg, raerrasec, decerrasec, vmag, bmag, gmag, rmag, imag, verr, berr, gerr, rerr, ierr FROM stars \
-                           WHERE (coords @ scircle '<(" + str(raDeg) + "d," + str(decDeg) + "d)," + str(searchRadius) + "d>' = true) and (bmag <= " 
-                           + str(limitingMag) + ") and (rmag <= " + str(limitingMag) + ")")
-        
-        if appendToCat:        
-            for row in res.fetchall(): 
-                try:
-                    APASSREF    = str(row[0])
-                    RA          = float(row[1])
-                    DEC         = float(row[2])
-                    RAERR       = float(row[3])
-                    DECERR      = float(row[4])
-                    VMAG        = float(row[5])
-                    BMAG        = float(row[6])
-                    GMAG        = float(row[7])
-                    RMAG        = float(row[8])
-                    IMAG        = float(row[9])
-                    VMAGERR     = float(row[10])
-                    BMAGERR     = float(row[11])
-                    GMAGERR     = float(row[12])
-                    RMAGERR     = float(row[13])
-                    IMAGERR     = float(row[14])
-                    self.insert(apassref=APASSREF, ra=RA, dec=DEC, raerr=RAERR, decerr=DECERR, vmag=VMAG, bmag=BMAG, gmag=GMAG, rmag=RMAG, imag=IMAG, 
-                                vmagerr=VMAGERR, bmagerr=BMAGERR, gmagerr=GMAGERR, rmagerr=RMAGERR, imagerr=IMAGERR)
-                except ValueError: 
-                    continue                
+        # append to internal catalogue
+        if ws_cat.text is not None:
+            if appendToCat:        
+                for entry in json.loads(ws_cat.text): 
+                    try:
+                        APASSREF    = str(entry['apassref'])
+                        RA          = float(entry['ra'])
+                        DEC         = float(entry['dec'])
+                        RAERR       = float(entry['raerrasec'])
+                        DECERR      = float(entry['decerrasec'])
+                        VMAG        = float(entry['vmag'])
+                        BMAG        = float(entry['bmag'])
+                        GMAG        = float(entry['gmag'])
+                        RMAG        = float(entry['rmag'])
+                        IMAG        = float(entry['imag'])
+                        VMAGERR     = float(entry['verr'])
+                        BMAGERR     = float(entry['berr'])
+                        GMAGERR     = float(entry['gerr'])
+                        RMAGERR     = float(entry['rerr'])
+                        IMAGERR     = float(entry['ierr'])
+                        NOBS        = int(entry['nobs'])
+                        self.insert(apassref=APASSREF, ra=RA, dec=DEC, raerr=RAERR, decerr=DECERR, vmag=VMAG, bmag=BMAG, gmag=GMAG, rmag=RMAG, imag=IMAG, 
+                                    vmagerr=VMAGERR, bmagerr=BMAGERR, gmagerr=GMAGERR, rmagerr=RMAGERR, imagerr=IMAGERR, nobs=NOBS)
+                    except ValueError: 
+                        continue                
 
 class USNOBCatalogue(Catalogue):
     def __init__(self, err, logger):
-        Catalogue.__init__(self) 
-        self.EPOCH = []
+        Catalogue.__init__(self)  
+        self.R1MAG = []      
+        self.B1MAG = []
         self.R2MAG = []      
         self.B2MAG = []            
         self.err = err
         self.logger = logger
 
-    def insert(self, usnobref, ra, dec, epoch, r2mag, b2mag):
+    def insert(self, usnobref, ra, dec, raerr, decerr, r1mag, b1mag, r2mag, b2mag):
         '''
-        insert usnob object into catalogue
+        insert USNOB object into catalogue
         '''
         self.REF.append(usnobref)
         self.RA.append(ra)    
         self.DEC.append(dec)
-        self.EPOCH.append(epoch)
+        self.RAERR.append(raerr)    
+        self.DECERR.append(decerr)
+        self.R1MAG.append(r1mag)    
+        self.B1MAG.append(b1mag)
         self.R2MAG.append(r2mag)    
         self.B2MAG.append(b2mag)
 
-    def query(self, filePath, binPath, catUSNOBPath, raDeg, decDeg, searchRadius, limitingMag, appendToCat=True):
+    def query(self, pw_file, pw_file_id, raDeg, decDeg, searchRadius, limitingMag, maxNumSourcesXMatch, appendToCat=True):
         ''' 
-        query USNOB1 database for objects satisfying specific criteria
+        do SCS on USNOB catalogue
         '''
-        def slices(s, *args):
-            position = 0
-            for length in args:
-                yield s[position:position + length]
-                position += length
-
-        with open(filePath, "w") as outFile:
-            subprocess.call([binPath + "query_usnob", "-r", str(searchRadius), "-c", str(raDeg), str(decDeg), "-lmb1", "-1," + str(limitingMag), "-lmb2", "-1," + str(limitingMag), "-lmr1", "-1," + str(limitingMag), "-lmr2", "-1," + str(limitingMag), "-m", "100000", "-R", catUSNOBPath.rstrip('/')], stdout=outFile)
-
-        with open(filePath, "r") as inFile:
-            for line in inFile:
-                parsed = list(slices(line, 12, 1, 12, 1, 10, 10, 1, 3, 1, 3, 1, 6, 1, 6, 1, 6, 1, 1, 1, 3, 1, 3, 1, 1, 1, 1, 1, 1, 1, 4, 1, 5, 1, 1, 1, 5, 1, 2, 1, 13, 1, 5, 1, 1, 1, 5, 1, 2, 1, 13, 1, 5, 1, 1, 1, 5, 1, 2, 1, 13, 1, 5, 1, 1, 1, 5, 1, 2, 1, 13, 1, 5, 1, 1, 1, 5, 1, 2, 1, 13, 1, 4, 7))
-                USNOBREF = parsed[0]
-                RA = parsed[4]
-                DEC = parsed[5] 
-                EPOCH = parsed[11] 
-                BMAG1 = parsed[31]
-                RMAG1 = parsed[41]
-                BMAG2 = parsed[51]
-                RMAG2 = parsed[61]
-
-                # check input is numeric (float) to truncate start/end lines
-                if appendToCat:
-                  try:
-                      self.insert(usnobref=str(USNOBREF), ra=float(RA), dec=float(DEC), epoch=float(EPOCH), r2mag=float(RMAG2), b2mag=float(BMAG2))
-                  except ValueError: 
-                      continue
-
+        try:
+            ip, port, username, password = rpf(pw_file, pw_file_id)
+            port = int(port)
+        except IOError:
+            self.err.setError(-17)
+            self.err.handleError()       
+        except TypeError:
+            self.err.setError(-18)
+            self.err.handleError()  
+            
+         # ws call outputs json
+        ws_cat = wsc(self.err, self.logger)
+        ws_cat.do_SCS(ip, port, 'usnob', raDeg, decDeg, searchRadius, 'rmag1', -1, limitingMag, 'distance', maxNumSourcesXMatch, 'json')
+        
+        # append to internal catalogue
+        if ws_cat.text is not None:
+            if appendToCat:        
+                for entry in json.loads(ws_cat.text): 
+                    try:
+                        USNOBREF    = str(entry['usnobref'])
+                        RA          = float(entry['ra'])
+                        DEC         = float(entry['dec'])
+                        RAERR       = float(entry['raerrasec'])
+                        DECERR      = float(entry['decerrasec'])
+                        R1MAG       = float(entry['rmag1'])
+                        B1MAG       = float(entry['bmag1'])
+                        R2MAG       = float(entry['rmag2'])
+                        B2MAG       = float(entry['bmag2'])
+                        self.insert(usnobref=USNOBREF, ra=RA, dec=DEC, raerr=RAERR, decerr=DECERR, r1mag=R1MAG, b1mag=B1MAG, r2mag=R2MAG, b2mag=B2MAG)
+                    except ValueError: 
+                        continue    
+                    
 class sExCatalogue(Catalogue):
     def __init__(self, err, logger):
         Catalogue.__init__(self) 
