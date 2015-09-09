@@ -23,8 +23,6 @@ class Catalogue():
         self.REF = []
         self.RA = []
         self.DEC = [] 
-        self.RAERR = []
-        self.DECERR = []  
         
     def insert(self):
         pass
@@ -35,6 +33,8 @@ class Catalogue():
 class APASSCatalogue(Catalogue):
     def __init__(self, err, logger):
         Catalogue.__init__(self) 
+        self.RAERR = []
+        self.DECERR = []  
         self.VMAG = []  
         self.BMAG = []          
         self.GMAG = []
@@ -85,8 +85,8 @@ class APASSCatalogue(Catalogue):
             self.err.handleError()  
             
         # ws call outputs json
-        ws_cat = wsc(self.err, self.logger)
-        ws_cat.do_SCS(ip, port, 'apass', raDeg, decDeg, searchRadius, 'rmag', -1, limitingMag, 'distance', maxNumSourcesXMatch, 'json')
+        ws_cat = wsc(ip, port, self.err, self.logger)
+        ws_cat.SCS('apass', raDeg, decDeg, searchRadius, 'rmag', -1, limitingMag, 'distance', maxNumSourcesXMatch, 'json')
         
         # append to internal catalogue
         if ws_cat.text is not None:
@@ -117,6 +117,8 @@ class APASSCatalogue(Catalogue):
 class USNOBCatalogue(Catalogue):
     def __init__(self, err, logger):
         Catalogue.__init__(self)  
+        self.RAERR = []
+        self.DECERR = [] 
         self.R1MAG = []      
         self.B1MAG = []
         self.R2MAG = []      
@@ -153,8 +155,8 @@ class USNOBCatalogue(Catalogue):
             self.err.handleError()  
             
          # ws call outputs json
-        ws_cat = wsc(self.err, self.logger)
-        ws_cat.do_SCS(ip, port, 'usnob', raDeg, decDeg, searchRadius, 'rmag1', -1, limitingMag, 'distance', maxNumSourcesXMatch, 'json')
+        ws_cat = wsc(ip, port, self.err, self.logger)
+        ws_cat.SCS('usnob', raDeg, decDeg, searchRadius, 'rmag1', -1, limitingMag, 'distance', maxNumSourcesXMatch, 'json')
         
         # append to internal catalogue
         if ws_cat.text is not None:

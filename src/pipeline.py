@@ -8,6 +8,7 @@ import logging
 import tempfile
 import subprocess
 import os
+import urllib
 
 import numpy as np
 import scipy.stats as stats
@@ -18,8 +19,8 @@ from catalogue import *
 from source import source
 from util import *
 from database import database_postgresql
-from mine import postgresql_skycam_mine
 from plot import plotZPCalibration, plotMollweide
+from ws import ws_catalogue as wsc
 
 class pipeline():
     def __init__(self, params, err, logger):
@@ -50,7 +51,7 @@ class pipeline():
                     if matchedSources is not None and unmatchedSources is not None:
                         magDifference, BRcolour, ZP = self._calibrateZP(matchedSources, cat=self.params['cat'])             # zeropoint calculation
                         if self.params['storeToDB']:
-                            self._storeToPostgresSQLDatabase(matchedSources, unmatchedSources, cat=self.params['cat'])      # database storage
+                            self._storeToPostgresDatabase(matchedSources, unmatchedSources, cat=self.params['cat'])      # database storage
                         if self.params['makePlots']:
                             plotZPCalibration(magDifference, BRcolour, ZP,                                                  # plots
                                               float(self.params['lowerColourLimit']), 
@@ -379,12 +380,10 @@ class pipeline():
 
         return magDifference, BRcolour, (c, m)
 
-    def _storeToPostgresSQLDatabase(self, matchedSources, unmatchedSources, cat):
+    def _storeToPostgresDatabase(self, matchedSources, unmatchedSources, cat):
         '''
-        send information to database.
+        store skycam image and extracted source information
         '''
-
-    	# set up database connection
         try:
             ip, port, username, password = rpf(self.params['path_pw_list'], self.params['skycam_cat_db_credentials_id'])
             port = int(port)
@@ -393,70 +392,100 @@ class pipeline():
             self.err.handleError()       
         except TypeError:
             self.err.setError(-20)
-            self.err.handleError()     	
-   	skycamDB = database_postgresql(ip, '5433', 'eng', '', 'skycam', self.err)
-    	skycamDB.connect()
-
-   	 # set up mine (& create schema if necessary)
-    	schemaName = self.params['schemaName']
-    	mine = postgresql_skycam_mine(skycamDB, schemaName, self.logger, self.err)
-
-    	if not skycamDB.check_schema_exists(schemaName):
-            mine.setup()
-
+            self.err.handleError() 
+            
         # create unique set of filenames from matchedSources list
-        imageFilenames = set()
+        images = set()
         for source in matchedSources:
-            imageFilenames.add(source.filename)
-
+            images.add(source.filename)
+   
         # process images by filename
-        for i in imageFilenames:
-            ## CLOBBERING. NOTE: entries into matched* tables are not removed
-            ### establish if entry exists for this filename
-            query = "SELECT count(*) FROM " + schemaName + ".images WHERE filename = '" + str(os.path.basename(i)) + "'"
-            res = skycamDB.read(query).fetchone()
-            rowCount = res[0] 
-            if (rowCount > 0):	# found entry
-                ### delete records from database if clobber flag is set, otherwise continue to next image
-                if self.params['clobberDB']:
-                    mine.deleteSourcesByFilename(os.path.basename(i))
-                    mine.deleteImageByFilename(os.path.basename(i))
-                else:
-		### otherwise skip this image
-                    self.logger.info("(pipeline._storeToPostgresSQLDatabase) Ignoring image " + str(os.path.basename(i)))
-                    continue
+        for i in images:
+            
+            ws_cat = wsc(ip, port, self.err, self.logger) 
+            
+            im = FITSFile(i, self.err) 
+	    im.openFITSFile()
+            im.getHeaders(0)
+            
+            ## ****************
+            ## **** images ****
+            ## ****************           
+            # we do a bit of data cleansing on the headers and replace forward slashes with unicode equivalent 
+            # (otherwise REST interface breaks)
+            keep = ['DATE-OBS', 'MJD', 'UTSTART', 'RA_CENT', 'DEC_CENT', 'RA_MIN', 'RA_MAX', 'DEC_MIN', 
+                    'DEC_MAX', 'CCDSTEMP', 'CCDATEMP', 'AZDMD', 'AZIMUTH', 'ALTDMD', 'ALTITUDE', 'ROTSKYPA']
+            headers = {}
+            for key, val in im.headers.iteritems():
+                if key in keep:
+                    try:
+                        headers[key.replace('-', '_')] = urllib.quote(val, safe='').strip()
+                    except AttributeError:
+                        headers[key.replace('-', '_')] = val
+            headers['FILENAME'] = os.path.basename(i).strip()
+        
+            ws_cat.skycam_insert_image(self.params['schemaName'], headers, os.path.basename(i))     # insert
+            if ws_cat.status != 200:
+                self.err.setError(15)
+                self.err.handleError()
+                continue 
+            res = json.loads(ws_cat.text)
+            img_id  = res['img_id']
+            img_mjd = res['mjd']
 
-            filename = os.path.basename(i)
-
-            ## create list of matched and unmatched sources taken from this image
+            self.logger.info("(pipeline._storeToPostgresDatabase) Stored image details for " + str(os.path.basename(i)) + " with img_id of " + str(img_id) + " in images table")
+            
+            ## *****************
+            ## **** sources ****
+            ## *****************  
+            
+            ### create list of matched and unmatched sources taken from this image
             im_unmatchedSources = list(source for source in unmatchedSources if source.filename == i)
             im_matchedSources = list(source for source in matchedSources if source.filename == i)
+            
+            for src in im_unmatchedSources + im_matchedSources:
+                s = {}
+                s['mjd']            = img_mjd
+                s['img_id']         = img_id
+                if src.USNOBCatREF is None: 
+                    s['usnobref']   = "NULL"
+                else:
+                    s['usnobref']   = str(src.USNOBCatREF)
+                if src.APASSCatREF is None: 
+                    s['apassref']   = "NULL"
+                else:
+                    s['apassref']   = str(src.APASSCatREF)
+                s['ra']             = float(src.sExCatRA)
+                s['dec']            = float(src.sExCatDEC)
+                s['x']              = float(src.sExCatx)
+                s['y']              = float(src.sExCaty)
+                s['fluxAuto']       = float(src.sExCatFluxAuto)
+                s['fluxErrAuto']    = float(src.sExCatFluxErrAuto)
+                s['magAuto']        = float(src.sExCatMagAuto)
+                s['magErrAuto']     = float(src.sExCatMagErrAuto) 
+                s['background']     = float(src.sExCatBackground)
+                s['isoareaWorld']   = float(src.sExCatIsoareaWorld)
+                s['SEFlags']        = float(src.sExCatSEFlags)
+                s['FWHM']           = float(src.sExCatFWHM)
+                s['elongation']     = float(src.sExCatElongation)
+                s['ellipticity']    = float(src.sExCatEllipticity)
+                s['thetaImage']     = float(src.sExCatThetaImage)
+                
+                ws_cat.skycam_sources_add_to_buffer(self.params['schemaName'], s)       # add to buffer
+                if ws_cat.status != 200:
+                    self.err.setError(15)
+                    self.err.handleError()
+                    continue 
+                
+            ws_cat.skycam_sources_flush_buffer_to_db(self.params['schemaName'])         # insert
+            if ws_cat.status != 200:
+                self.err.setError(15)
+                self.err.handleError()
+                continue 
+            
+            self.logger.info("(pipeline._storeToPostgresDatabase) Stored source details for " + str(os.path.basename(i)) + " with img_id of " + str(img_id) + " in sources table")
+                
+            im.closeFITSFile() 
+            
+            
 
-            ## create list of unique targets from matched sources list
-            existing_refs = []
-            if cat == "USNOB":
-                USNOBCatUnique = USNOBCatalogue(self.err, self.logger)
-                for src in im_matchedSources:
-                    if src.USNOBCatREF not in existing_refs:
-                        existing_refs.append(src.USNOBCatREF)
-                        USNOBCatUnique.insert(usnobref=src.USNOBCatREF, ra=src.USNOBCatRA, dec=src.USNOBCatDEC, raerr=src.USNOBCatRAERR, decerr=src.USNOBCatDECERR, r1mag=src.USNOBCatR1MAG, b1mag=src.USNOBCatB1MAG, r2mag=src.USNOBCatR2MAG, b2mag=src.USNOBCatB2MAG) 
-            elif cat == "APASS":
-                APASSCatUnique = APASSCatalogue(self.err, self.logger)
-                for src in im_matchedSources:
-                    if src.APASSCatREF not in existing_refs:
-                        existing_refs.append(src.APASSCatREF)
-                        APASSCatUnique.insert(apassref=src.APASSCatREF, ra=src.APASSCatRA, dec=src.APASSCatDEC, raerr=src.APASSCatRAERR, decerr=src.APASSCatDECERR, vmag=src.APASSCatVMAG, bmag=src.APASSCatBMAG, gmag=src.APASSCatGMAG, rmag=src.APASSCatRMAG, imag=src.APASSCatIMAG, vmagerr=src.APASSCatVMAGERR, bmagerr=src.APASSCatBMAGERR, gmagerr=src.APASSCatGMAGERR, rmagerr=src.APASSCatRMAGERR, imagerr=src.APASSCatIMAGERR, nobs=src.APASSCatNOBS) 
-                        
-            ## insert image, matched*Objects and sources into mine
-	    img_id = mine.insertImage(i)
-            if img_id is not None:
-                if cat == "USNOB":
-                    mine.insertMatchedUSNOBObjects(USNOBCatUnique)
-                elif cat == "APASS":   
-                    mine.insertMatchedAPASSObjects(APASSCatUnique)
-                mine.insertSources(i, img_id, im_matchedSources)
-                mine.insertSources(i, img_id, im_unmatchedSources)
-
-        #mine.dumpTableRowCount()	# DEBUG
-        #mine.dumpTableSampleRecord()	# DEBUG
- 

@@ -33,7 +33,7 @@ if __name__ == "__main__":
 
     group2 = optparse.OptionGroup(parser, "Postgres database options")
     group2.add_option('--sdb', action='store_true', dest='storeToDB', help='store to db?')
-    group2.add_option('--odb', action='store_true', dest='clobberDB', help='overwrite entries with existing filename in db?')
+    #group2.add_option('--odb', action='store_true', dest='clobberDB', help='overwrite entries with existing filename in db?')
     parser.add_option_group(group2)
 
     options, args = parser.parse_args()
@@ -47,8 +47,8 @@ if __name__ == "__main__":
         'skipArchive'  : bool(options.skipArchive),
         'makePlots'  : bool(options.makePlots),
         'daemon' : bool(options.daemon),
-        'storeToDB' : bool(options.storeToDB),   
-        'clobberDB' : bool(options.clobberDB)
+        'storeToDB' : bool(options.storeToDB)#,   
+        #'clobberDB' : bool(options.clobberDB)
     } 
 
     # ------------------------

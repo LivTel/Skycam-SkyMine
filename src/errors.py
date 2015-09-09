@@ -32,8 +32,8 @@ class errors:
                                    -16:"(archive.__init__) Archive credentials not found in password file",
                                    -17:"(catalogue.*Catalogue.__init__) Password list not found",
                                    -18:"(catalogue.*Catalogue.__init__) Catalogue credentials not found in password file",
-                                   -19:"(pipeline._storeToPostgresSQLDatabase) Password list not found",
-                                   -20:"(pipeline._storeToPostgresSQLDatabase) Catalogue credentials not found in password file",
+                                   -19:"(pipeline._storeToPostgresDatabase) Password list not found",
+                                   -20:"(pipeline._storeToPostgresDatabase) Catalogue credentials not found in password file",
                                    -21:"(archive.__init__) Skycam lookup database credentials not found in password file",
 				   1:"(pipeline._extractSources) Image doesn't have valid WCS, ignoring",              
                                    2:"(process.run_sync) Iteration raised a CRITICAL fault, ignoring",
@@ -49,7 +49,7 @@ class errors:
                                    12:"(pipeline._XMatchSources) Image contains too few matched sources, ignoring",
                                    13:"(process.run_sync) Processing time is longer than sync check time",
                                    14:"(pipeline.run) No valid images found for this run",
-                                   15:"(ws.ws_catalogue.do_SCS) Web service did not return a status code of 200"
+                                   15:"(ws.ws_catalogue.*) Web service did not return a status code of 200"
                                    }
 
     def setError(self, newErrorCode):
