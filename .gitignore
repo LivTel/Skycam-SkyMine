@@ -23,7 +23,5 @@
 *~
 *swp
 
-# PW_LIST #
-###########
-/etc/pipe/PW_LIST
+/etc/pipe/EXTERNAL_RESOURCES
 

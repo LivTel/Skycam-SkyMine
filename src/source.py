@@ -8,13 +8,17 @@ description: 	A class to hold source information
 class source():
     def __init__(self, filename, sExCatRA, sExCatDEC, sExCatx, sExCaty, sExCatFluxAuto, sExCatFluxErrAuto, sExCatMagAuto, 
                  sExCatMagErrAuto, sExCatBackground, sExCatIsoareaWorld, sExCatSEFlags, sExCatFWHM, sExCatElongation, sExCatEllipticity, 
-                 sExCatThetaImage, USNOBCatREF = None, USNOBCatRA=None, USNOBCatDEC=None, USNOBCatRAERR=None, USNOBCatDECERR=None, 
-                 USNOBCatR1MAG=None, USNOBCatB1MAG=None, USNOBCatR2MAG=None, USNOBCatB2MAG=None, APASSCatREF = None, APASSCatRA = None, 
-                 APASSCatDEC = None, APASSCatRAERR = None, APASSCatDECERR = None, APASSCatVMAG = None, APASSCatBMAG = None, 
-                 APASSCatGMAG = None, APASSCatRMAG = None, APASSCatIMAG = None, APASSCatVMAGERR = None, APASSCatBMAGERR = None, 
-                 APASSCatGMAGERR = None, APASSCatRMAGERR = None, APASSCatIMAGERR = None, APASSCatNOBS = None):
+                 sExCatThetaImage, USNOBCatREF = None, USNOBCatXMatchDist=None, USNOBCatRA=None, USNOBCatDEC=None, USNOBCatRAERR=None, USNOBCatDECERR=None, 
+                 USNOBCatR1MAG=None, USNOBCatB1MAG=None, USNOBCatR2MAG=None, USNOBCatB2MAG=None, APASSCatREF = None, 
+                 APASSCatXMatchDist=None, APASSCatRA=None, APASSCatDEC=None, APASSCatRAERR=None, APASSCatDECERR=None, APASSCatVMAG=None, 
+                 APASSCatBMAG=None, APASSCatGMAG=None, APASSCatRMAG=None, APASSCatIMAG=None, APASSCatVMAGERR=None, APASSCatBMAGERR=None, 
+                 APASSCatGMAGERR=None, APASSCatRMAGERR=None, APASSCatIMAGERR=None, APASSCatNOBS=None, SKYCAMCatREF=None, SKYCAMCatRA=None,
+                 SKYCAMCatDEC=None, SKYCAMCatRAERR=None, SKYCAMCatDECERR=None, SKYCAMCatAPASSREF=None, SKYCAMCatUSNOBREF=None,
+                 SKYCAMCatNOBS=None, SKYCAMCatROLLINGMEANAPASSMAG=None, SKYCAMCatROLLINGSTDEVAPASSMAG=None, SKYCAMCatROLLINGMEANUSNOBMAG=None,
+                 SKYCAMCatROLLINGSTDEVUSNOBMAG=None):
         self.filename = filename
         self.APASSCatREF = APASSCatREF
+        self.APASSCatXMatchDist = APASSCatXMatchDist
         self.APASSCatRA = APASSCatRA
         self.APASSCatDEC = APASSCatDEC
         self.APASSCatRAERR = APASSCatRAERR
@@ -31,6 +35,7 @@ class source():
         self.APASSCatIMAGERR = APASSCatIMAGERR
         self.APASSCatNOBS = APASSCatNOBS
         self.USNOBCatREF = USNOBCatREF
+        self.USNOBCatXMatchDist = USNOBCatXMatchDist        
         self.USNOBCatRA = USNOBCatRA
         self.USNOBCatDEC = USNOBCatDEC
         self.USNOBCatRAERR = USNOBCatRAERR
@@ -39,6 +44,18 @@ class source():
         self.USNOBCatB1MAG = USNOBCatB1MAG
         self.USNOBCatR2MAG = USNOBCatR2MAG
         self.USNOBCatB2MAG = USNOBCatB2MAG
+        self.SKYCAMCatREF = SKYCAMCatREF
+        self.SKYCAMCatRA = SKYCAMCatRA
+        self.SKYCAMCatDEC = SKYCAMCatDEC
+        self.SKYCAMCatRAERR = SKYCAMCatRAERR
+        self.SKYCAMCatDECERR = SKYCAMCatDECERR
+        self.SKYCAMCatAPASSREF = SKYCAMCatAPASSREF
+        self.SKYCAMCatUSNOBREF = SKYCAMCatUSNOBREF
+        self.SKYCAMCatNOBS = SKYCAMCatNOBS
+        self.SKYCAMCatROLLINGMEANAPASSMAG = SKYCAMCatROLLINGMEANAPASSMAG
+        self.SKYCAMCatROLLINGSTDEVAPASSMAG = SKYCAMCatROLLINGSTDEVAPASSMAG
+        self.SKYCAMCatROLLINGMEANUSNOBMAG = SKYCAMCatROLLINGMEANUSNOBMAG
+        self.SKYCAMCatROLLINGSTDEVUSNOBMAG = SKYCAMCatROLLINGSTDEVUSNOBMAG
         self.sExCatRA = sExCatRA
         self.sExCatDEC = sExCatDEC
         self.sExCatx = sExCatx

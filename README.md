@@ -8,10 +8,11 @@ refactored into Python.
 # Installing
 
 You will first need to edit the system specific information (paths etc.) 
-in etc/pipe/pipeline.ini, etc/pipe/PW\_LIST and etc/sex/params/*.sex files 
+in etc/pipe/pipeline.ini, etc/pipe/EXTERNAL_RESOURCES and etc/sex/params/*.sex files 
 accordingly. 
 
-You will need to make sure that the catalogue webservices are running.
+You will need to make sure that the catalogue-webservices RESTful services 
+are available.
 
 Catalogues are selected through the pipeline.ini file in etc/pipe/. 
 Generally, we use the APASS database which has a better colour match to 

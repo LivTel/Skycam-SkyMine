@@ -1,4 +1,4 @@
-# This is an example TSV password file used by SkyMine. 
+# This is an example resources file used by SkyMine. 
 # 
 # id        ip  port    user    pw
 archive     -   -       -       -    

@@ -21,6 +21,7 @@ from util import *
 from database import database_postgresql
 from plot import plotZPCalibration, plotMollweide
 from ws import ws_catalogue as wsc
+from pyspherematch import _great_circle_distance as gcd
 
 class pipeline():
     def __init__(self, params, err, logger):
@@ -29,41 +30,60 @@ class pipeline():
         self.logger		= logger
         
         self.lastPointing       = []
-        self.RefCatAll          = []
+        
+        # the following catalogues are kept in the constructor so that they are not reinitialised every time 
+        # pipeline.run() is invoked. this is important for sync operations
+        self.RefCatAll          = {}                                                                  # reference catalogues to match against
+        self.SkycamCat          = SkycamCatalogue(self.err, self.logger, self.params['schemaName'])   # required if we're amending the Skycam catalogue table (if --sdb is set)
 
     def run(self, images):
         '''
         run the sequence
         '''
         self.logger.info("(pipeline.run) Starting run")
+        
+        # init instances of catalogues and append to RefCatAll. 
+        # this is done to avoid having to requery the same pointing
+        if not self.RefCatAll:  # first we check if it's empty, this is important for sync runs
+            for c in self.params['cat']:
+                if c == "APASS":
+                    self.RefCatAll[c] = APASSCatalogue(self.err, self.logger) 
+                elif c == "USNOB":
+                    self.RefCatAll[c] = USNOBCatalogue(self.err, self.logger)    
 
-        doCatQuery = True                                                                                                  # this keeps track of whether we need to perform a new catalogue query
+        doCatQuery = True     # this keeps track of whether we need to perform a new catalogue query
         valid_images = []
         for idx, f in enumerate(images):
             self.logger.info("(pipeline.run) processing file " + str(idx+1) + " of " + str(len(images)) + " (" + os.path.basename(f) + ")")
             im = FITSFile(f, self.err) 
             im.openFITSFile()
             im.getHeaders(0)     
-            if self._hasValidWCS(im):                                                                                       # checks that we have a valid WCS
-                if not self._hasPointingChanged(im):                                                                        # checks that pointing hasn't changed
-                    self._extractSources(f, im)                                                                             # extract sources
-                    matchedSources, unmatchedSources = self._XMatchSources(f, im, doCatQuery, cat=self.params['cat'])       # catalogue cross matching 
-                    if matchedSources is not None and unmatchedSources is not None:
-                        magDifference, BRcolour, ZP = self._calibrateZP(matchedSources, cat=self.params['cat'])             # zeropoint calculation
-                        if self.params['storeToDB']:
-                            self._storeToPostgresDatabase(matchedSources, unmatchedSources, cat=self.params['cat'])      # database storage
-                        if self.params['makePlots']:
-                            plotZPCalibration(magDifference, BRcolour, ZP,                                                  # plots
-                                              float(self.params['lowerColourLimit']), 
-                                              float(self.params['upperColourLimit']), 
-                                              self.logger, 
-                                              hard=True, 
-                                              outImageFilename=self.params['resPath'] + os.path.basename(f) + ".calibration.png", 
-                                              outDataFilename=self.params['resPath'] + os.path.basename(f) + ".data.calibration", 
-                                              )
-                    doCatQuery = False
+            if self._hasValidWCS(im):                                                                                  # checks that we have a valid WCS
+                if not self._hasPointingChanged(im):                                                                   # checks that pointing hasn't changed
+                    sourceList = self._extractSources(f, im)                                                           # extract sources
+                    ZPs = {}                                                                                           # we store ZP for each reference catalogue
+                    for c in self.params['cat']:
+                        sources = self._XMatchSources(im, doCatQuery, cat=self.RefCatAll[c], sources=sourceList)       # multiple catalogue cross-matching 
+                        if sources is not None:                                                                        # did we match anything?
+                            magDifference, BRcolour, zp_coeffs, V = self._calibrateZP(sources, cat=c)                  # frame zeropoint calculation
+                            zp_stdev = np.sqrt(V[1,1])                                                                 # variance is last element of covariance matrix
+                            ZPs[c] = (zp_coeffs[1], zp_stdev)                                                          # for zero colour term, take intercept
+                            if self.params['makePlots']:
+                                plotZPCalibration(magDifference, BRcolour, ZPs[c],                                     # plots
+                                                  float(self.params['lowerColourLimit']), 
+                                                  float(self.params['upperColourLimit']), 
+                                                  self.logger, 
+                                                  hard=True, 
+                                                  outImageFilename=self.params['resPath'] + os.path.basename(f) + "." + c + ".calibration.png", 
+                                                  outDataFilename=self.params['resPath'] + os.path.basename(f) + "." + c + ".data.calibration", 
+                                                  )
+                    if self.params['storeToDB']:
+                        sources = self._XMatchSources(im, True, cat=self.SkycamCat, sources=sourceList)   # match sources with preexisting Skycam catalogue, always requery
+                        self._storeToPostgresDatabase(f, sourceList, ZPs)                                 # store to database
+                    if not self.params['forceCatalogueQuery']:
+                        doCatQuery = False
                     valid_images.append(f)
-                else:                                                                                                       # we skip processing the file if the pointing has changed
+                else:                                                                                     # skip processing file if pointing has changed
                     doCatQuery = True
                 self.lastPointing = self._getPointing(im)
             im.closeFITSFile()
@@ -113,6 +133,8 @@ class pipeline():
     def _extractSources(self, in_filename, in_FITS_im):
         '''
         run sExtractor on images and check source output.
+        
+        returns a list of source instances (w/ unpopulated reference catalogue fields).
         '''
         sExCat = sExCatalogue(self.err, self.logger)
         catdata = sExCat.query(in_filename,
@@ -176,48 +198,57 @@ class pipeline():
             self.err.handleError()
             return False 
           
-        return True
-      
-    def _XMatchSources(self, in_filename, in_FITS_im, doCatQuery, cat, checkColourIndex=True, checkNumMatchedSources=True):
-        '''
-        cross match sources with catalogue.
-
-        returns two objects containing lists of source instances (unmatchedSources, matchedSources).
-        '''
-        matchedSources = []
-        unmatchedSources = []
-        if not self.RefCatAll:
-            if cat == "APASS":
-                self.RefCatAll = APASSCatalogue(self.err, self.logger) 
-            elif cat == "USNOB":
-                self.RefCatAll = USNOBCatalogue(self.err, self.logger)  
-
-        self.logger.info("(pipeline._XMatchSources) Attempting to cross match sources with catalogue")
-
-        matchingTolerance = self.params['matchingTolerance']
-        limitingMag = self.params['limitingMag']
-        maxNumSourcesXMatch = self.params['maxNumSourcesXMatch']
-        searchRadius = self.params['fieldSize']
-
-        # establish if we need to query/requery the database
-        ## do we have information of this pointing defined aready?
+        # parse sExtractor catalogue
+        sExCat = sExCatalogue(self.err, self.logger)
+        sExCat.read(in_filename)        
         
-        thisPointing = self._getPointing(in_FITS_im)
-        ## ..check that the pointing hasn't changed
+        sources = []
+        # create a list of source instances from each sExtracted source
+        # with Nonetype cross-match catalogue variables
+        for i in range(len(sExCat.RA)):
+            sources.append(source(in_filename, 
+                                  sExCat.RA[i], 
+                                  sExCat.DEC[i], 
+                                  sExCat.X_IMAGE[i], 
+                                  sExCat.Y_IMAGE[i], 
+                                  sExCat.FLUX_AUTO[i], 
+                                  sExCat.FLUXERR_AUTO[i], 
+                                  sExCat.MAG_AUTO[i], 
+                                  sExCat.MAGERR_AUTO[i], 
+                                  sExCat.BACKGROUND[i], 
+                                  sExCat.ISOAREA_WORLD[i], 
+                                  sExCat.FLAGS[i], 
+                                  sExCat.FWHM_WORLD[i], 
+                                  sExCat.ELONGATION[i], 
+                                  sExCat.ELLIPTICITY[i], 
+                                  sExCat.THETA_IMAGE[i]
+                                  )
+            )              
+          
+        return sources
+    
+    def _XMatchSources(self, in_FITS_im, doCatQuery, cat, sources, checkColourIndex=True, checkNumMatchedSources=True):
+        '''
+        cross-match sources with catalogue(s).
+
+        returns a list of source instances (w/ reference catalogue fields filled).
+        '''
+        self.logger.info("(pipeline._XMatchSources) Cross-matching sources with " + cat.NAME + " catalogue")
+        
+        # set cross-matching parameters
+        matchingTolerance   = self.params['matchingTolerance']
+        limitingMag         = self.params['limitingMag']
+        maxNumSourcesXMatch = self.params['maxNumSourcesXMatch']
+        searchRadius        = self.params['fieldSize']
+        # requery catalogue and cross-match if pointing has changed
         if doCatQuery:
-            self.logger.info("(pipeline._XMatchSources) No previous pointing information or pointing has changed since last image.")
-            if cat == "APASS":
-                self.logger.info("(pipeline._XMatchSources) Querying APASS catalogue at " + in_FITS_im.headers['RA'] + " " 
-                                 + in_FITS_im.headers['DEC'] + " with a search radius of " 
-                                 + str(searchRadius + float(self.params['pointingDiffThresh'])) + ", " 
-                                 + str(searchRadius + float(self.params['pointingDiffThresh'])) + " deg")
-            elif cat == "USNOB":
-                self.logger.info("(pipeline._XMatchSources) Querying USNOB catalogue at " + in_FITS_im.headers['RA'] 
-                                 + " " + in_FITS_im.headers['DEC'] + " with a search radius of " 
-                                 + str(searchRadius + float(self.params['pointingDiffThresh'])) + ", " 
-                                 + str(searchRadius + float(self.params['pointingDiffThresh'])) + " deg")
+            self.logger.info("(pipeline._XMatchSources) No previous pointing information, user has forced always-do catalogue queries or pointing has changed since last image")
+            self.logger.info("(pipeline._XMatchSources) Querying " + cat.NAME + " catalogue at " + in_FITS_im.headers['RA'] 
+                             + " " + in_FITS_im.headers['DEC'] + " with a search radius of " 
+                             + str(searchRadius + float(self.params['pointingDiffThresh'])) + ", " 
+                             + str(searchRadius + float(self.params['pointingDiffThresh'])) + " deg")
                 
-            self.RefCatAll.query(self.params['path_pw_list'], 
+            cat.query(self.params['path_pw_list'], 
                         self.params['catalogue_credentials_id'], 
                         hms_2_deg(in_FITS_im.headers['RA']), 
                         dms_2_deg(in_FITS_im.headers['DEC']), 
@@ -228,135 +259,116 @@ class pipeline():
         else:
             self.logger.info("(pipeline._XMatchSources) Pointing has not changed since last image. Using data from previous query")
 
-        # parse Sextractor catalogue
-        sExCat = sExCatalogue(self.err, self.logger)
-        sExCat.read(in_filename)
-
-        # do cross match
-        self.logger.info("(pipeline._XMatchSources) Cross matching catalogues with a tolerance of " + str(matchingTolerance*3600) + " arcsec")
-        matches = pysm.spherematch(sExCat.RA, sExCat.DEC, self.RefCatAll.RA, self.RefCatAll.DEC, tol=matchingTolerance, nnearest=1)
+        # do cross-match
+        if len(cat.RA) > 0:
+            self.logger.info("(pipeline._XMatchSources) Cross-matching catalogues with a tolerance of " + str(matchingTolerance*3600) + " arcsec")
+            matches = pysm.spherematch([s.sExCatRA for s in sources], [s.sExCatDEC for s in sources], cat.RA, cat.DEC, tol=matchingTolerance, nnearest=1)
                 
-        sExCatMatchedIndexes = matches[0]
-        RefCatMatchedIndexes = matches[1]
-
-        # find indexes of unmatched sources
-        sExCatAllIndexes = np.arange(0, len(sExCat.RA), 1)
-        sExCatUnmatchedIndexes = list(set(sExCatAllIndexes) - set(sExCatMatchedIndexes))
-        self.logger.info("(pipeline._XMatchSources) Cross matched " + str(len(sExCatMatchedIndexes)) + " source(s)")
+            sourcesMatchedIndexes = matches[0]
+            RefCatMatchedIndexes = matches[1]
+        
+            self.logger.info("(pipeline._XMatchSources) Cross-matched " + str(len(sourcesMatchedIndexes)) + " source(s)")
+        else:
+            self.err.setError(17)
+            self.err.handleError()
+            return None
 
         # if set, check number of matched sources is greater than the minimum required
         if checkNumMatchedSources:
-            if len(sExCatMatchedIndexes) < int(self.params['minNumMatchedSources']):
+            if len(sourcesMatchedIndexes) < int(self.params['minNumMatchedSources']):
                 self.err.setError(12)
                 self.err.handleError()
-                return None, None
+                return None
 
-        # create a list of matched sources
+        # populate cross-matched catalogue variables for each source
         numRemovedSourcesColour = 0
-        if cat == "APASS":
-            for idx in range(len(sExCatMatchedIndexes)):
-                # if set, check for sources lying outside of colour limits
-                if checkColourIndex:
-                    BRColour = self.RefCatAll.BMAG[RefCatMatchedIndexes[idx]] - self.RefCatAll.RMAG[RefCatMatchedIndexes[idx]]
-                    if BRColour < float(self.params['lowerColourLimit']) or BRColour > float(self.params['upperColourLimit']):
-                        numRemovedSourcesColour = numRemovedSourcesColour + 1
-                        continue
-                matchedSources.append(source(in_filename, 
-                                             sExCat.RA[sExCatMatchedIndexes[idx]], 
-                                             sExCat.DEC[sExCatMatchedIndexes[idx]], 
-                                             sExCat.X_IMAGE[sExCatMatchedIndexes[idx]], 
-                                             sExCat.Y_IMAGE[sExCatMatchedIndexes[idx]], 
-                                             sExCat.FLUX_AUTO[sExCatMatchedIndexes[idx]], 
-                                             sExCat.FLUXERR_AUTO[sExCatMatchedIndexes[idx]], 
-                                             sExCat.MAG_AUTO[sExCatMatchedIndexes[idx]], 
-                                             sExCat.MAGERR_AUTO[sExCatMatchedIndexes[idx]], 
-                                             sExCat.BACKGROUND[sExCatMatchedIndexes[idx]], 
-                                             sExCat.ISOAREA_WORLD[sExCatMatchedIndexes[idx]], 
-                                             sExCat.FLAGS[sExCatMatchedIndexes[idx]], 
-                                             sExCat.FWHM_WORLD[sExCatMatchedIndexes[idx]], 
-                                             sExCat.ELONGATION[sExCatMatchedIndexes[idx]], 
-                                             sExCat.ELLIPTICITY[sExCatMatchedIndexes[idx]], 
-                                             sExCat.THETA_IMAGE[sExCatMatchedIndexes[idx]], 
-                                             APASSCatREF=self.RefCatAll.REF[RefCatMatchedIndexes[idx]], 
-                                             APASSCatRA=self.RefCatAll.RA[RefCatMatchedIndexes[idx]], 
-                                             APASSCatDEC=self.RefCatAll.DEC[RefCatMatchedIndexes[idx]], 
-                                             APASSCatRAERR=self.RefCatAll.RAERR[RefCatMatchedIndexes[idx]], 
-                                             APASSCatDECERR=self.RefCatAll.DECERR[RefCatMatchedIndexes[idx]], 
-                                             APASSCatVMAG=self.RefCatAll.VMAG[RefCatMatchedIndexes[idx]], 
-                                             APASSCatBMAG=self.RefCatAll.BMAG[RefCatMatchedIndexes[idx]], 
-                                             APASSCatGMAG=self.RefCatAll.GMAG[RefCatMatchedIndexes[idx]], 
-                                             APASSCatRMAG=self.RefCatAll.RMAG[RefCatMatchedIndexes[idx]], 
-                                             APASSCatIMAG=self.RefCatAll.IMAG[RefCatMatchedIndexes[idx]], 
-                                             APASSCatVMAGERR=self.RefCatAll.VMAGERR[RefCatMatchedIndexes[idx]], 
-                                             APASSCatBMAGERR=self.RefCatAll.BMAGERR[RefCatMatchedIndexes[idx]],
-                                             APASSCatGMAGERR=self.RefCatAll.GMAGERR[RefCatMatchedIndexes[idx]], 
-                                             APASSCatRMAGERR=self.RefCatAll.RMAGERR[RefCatMatchedIndexes[idx]], 
-                                             APASSCatIMAGERR=self.RefCatAll.IMAGERR[RefCatMatchedIndexes[idx]],
-                                             APASSCatNOBS=self.RefCatAll.NOBS[RefCatMatchedIndexes[idx]])
-                ) 
-        elif cat == "USNOB":
-            for idx in range(len(sExCatMatchedIndexes)):
-                # if set, check for sources lying outside of colour limits
-                if checkColourIndex:
-                    BRColour = self.RefCatAll.B2MAG[RefCatMatchedIndexes[idx]] - self.RefCatAll.R2MAG[RefCatMatchedIndexes[idx]]
-                    if BRColour < float(self.params['lowerColourLimit']) or BRColour > float(self.params['upperColourLimit']):
-                        numRemovedSourcesColour = numRemovedSourcesColour + 1
-                        continue                  
-                matchedSources.append(source(in_filename, 
-                                             sExCat.RA[sExCatMatchedIndexes[idx]], 
-                                             sExCat.DEC[sExCatMatchedIndexes[idx]], 
-                                             sExCat.X_IMAGE[sExCatMatchedIndexes[idx]], 
-                                             sExCat.Y_IMAGE[sExCatMatchedIndexes[idx]], 
-                                             sExCat.FLUX_AUTO[sExCatMatchedIndexes[idx]], 
-                                             sExCat.FLUXERR_AUTO[sExCatMatchedIndexes[idx]], 
-                                             sExCat.MAG_AUTO[sExCatMatchedIndexes[idx]], 
-                                             sExCat.MAGERR_AUTO[sExCatMatchedIndexes[idx]], 
-                                             sExCat.BACKGROUND[sExCatMatchedIndexes[idx]], 
-                                             sExCat.ISOAREA_WORLD[sExCatMatchedIndexes[idx]], 
-                                             sExCat.FLAGS[sExCatMatchedIndexes[idx]], 
-                                             sExCat.FWHM_WORLD[sExCatMatchedIndexes[idx]],
-                                             sExCat.ELONGATION[sExCatMatchedIndexes[idx]], 
-                                             sExCat.ELLIPTICITY[sExCatMatchedIndexes[idx]], 
-                                             sExCat.THETA_IMAGE[sExCatMatchedIndexes[idx]], 
-                                             USNOBCatREF=self.RefCatAll.REF[RefCatMatchedIndexes[idx]], 
-                                             USNOBCatRA=self.RefCatAll.RA[RefCatMatchedIndexes[idx]], 
-                                             USNOBCatDEC=self.RefCatAll.DEC[RefCatMatchedIndexes[idx]], 
-                                             USNOBCatRAERR=self.RefCatAll.RAERR[RefCatMatchedIndexes[idx]], 
-                                             USNOBCatDECERR=self.RefCatAll.DECERR[RefCatMatchedIndexes[idx]],  
-                                             USNOBCatR1MAG=self.RefCatAll.R1MAG[RefCatMatchedIndexes[idx]], 
-                                             USNOBCatB1MAG=self.RefCatAll.B1MAG[RefCatMatchedIndexes[idx]],
-                                             USNOBCatR2MAG=self.RefCatAll.R2MAG[RefCatMatchedIndexes[idx]], 
-                                             USNOBCatB2MAG=self.RefCatAll.B2MAG[RefCatMatchedIndexes[idx]])
-                )        
+        numUnmatchedSources = 0
+        for source_idx in range(len(sources)):                                     # for every source in the source list...
+            if source_idx in sourcesMatchedIndexes:                                # .. has it been cross-matched to the catalogue?
+                thisMatchedIndex    = np.where(sourcesMatchedIndexes==source_idx)  # and if so, what index?
+                thisSourcesIndex    = sourcesMatchedIndexes[thisMatchedIndex]      # set the corresponding sources index
+                thisCatIndex        = RefCatMatchedIndexes[thisMatchedIndex]       # set the corresponding reference catalogue index
+                if cat.NAME == "APASS":    
+                    ## if set, check for sources lying outside of colour limits
+                    if checkColourIndex:
+                        BRColour = cat.BMAG[thisCatIndex] - cat.RMAG[thisCatIndex]
+                        if BRColour < float(self.params['lowerColourLimit']) or BRColour > float(self.params['upperColourLimit']):
+                            numRemovedSourcesColour = numRemovedSourcesColour + 1
+                            numUnmatchedSources = numUnmatchedSources + 1
+                            continue     
+                    ## update source information with cross-matched catalogue details
+                    sources[thisSourcesIndex].APASSCatREF=cat.REF[thisCatIndex]
+                    sources[thisSourcesIndex].APASSCatRA=cat.RA[thisCatIndex]
+                    sources[thisSourcesIndex].APASSCatDEC=cat.DEC[thisCatIndex]
+                    sources[thisSourcesIndex].APASSCatRAERR=cat.RAERR[thisCatIndex]
+                    sources[thisSourcesIndex].APASSCatDECERR=cat.DECERR[thisCatIndex]
+                    sources[thisSourcesIndex].APASSCatVMAG=cat.VMAG[thisCatIndex]
+                    sources[thisSourcesIndex].APASSCatBMAG=cat.BMAG[thisCatIndex]
+                    sources[thisSourcesIndex].APASSCatGMAG=cat.GMAG[thisCatIndex]
+                    sources[thisSourcesIndex].APASSCatRMAG=cat.RMAG[thisCatIndex]
+                    sources[thisSourcesIndex].APASSCatIMAG=cat.IMAG[thisCatIndex]
+                    sources[thisSourcesIndex].APASSCatVMAGERR=cat.VMAGERR[thisCatIndex]
+                    sources[thisSourcesIndex].APASSCatBMAGERR=cat.BMAGERR[thisCatIndex]
+                    sources[thisSourcesIndex].APASSCatGMAGERR=cat.GMAGERR[thisCatIndex]
+                    sources[thisSourcesIndex].APASSCatRMAGERR=cat.RMAGERR[thisCatIndex]
+                    sources[thisSourcesIndex].APASSCatIMAGERR=cat.IMAGERR[thisCatIndex]
+                    sources[thisSourcesIndex].APASSCatNOBS=cat.NOBS[thisCatIndex]     
+                    sources[thisSourcesIndex].APASSCatXMatchDist=gcd(cat.RA[thisCatIndex],
+                                                                     cat.DEC[thisCatIndex],
+                                                                     sources[thisSourcesIndex].sExCatRA,
+                                                                     sources[thisSourcesIndex].sExCatDEC)*3600
+                elif cat.NAME == "USNOB":
+                    ## if set, check for sources lying outside of colour limits
+                    if checkColourIndex:
+                        BRColour = cat.B1MAG[thisCatIndex] - cat.R1MAG[thisCatIndex]
+                        if BRColour < float(self.params['lowerColourLimit']) or BRColour > float(self.params['upperColourLimit']):
+                            numRemovedSourcesColour = numRemovedSourcesColour + 1
+                            numUnmatchedSources = numUnmatchedSources + 1
+                            continue
+                          
+                    ## update source information with cross-matched catalogue details
+                    sources[thisSourcesIndex].USNOBCatREF=cat.REF[thisCatIndex]
+                    sources[thisSourcesIndex].USNOBCatRA=cat.RA[thisCatIndex]
+                    sources[thisSourcesIndex].USNOBCatDEC=cat.DEC[thisCatIndex]
+                    sources[thisSourcesIndex].USNOBCatRAERR=cat.RAERR[thisCatIndex]
+                    sources[thisSourcesIndex].USNOBCatDECERR=cat.DECERR[thisCatIndex]
+                    sources[thisSourcesIndex].USNOBCatR1MAG=cat.R1MAG[thisCatIndex]
+                    sources[thisSourcesIndex].USNOBCatB1MAG=cat.B1MAG[thisCatIndex]
+                    sources[thisSourcesIndex].USNOBCatR2MAG=cat.R2MAG[thisCatIndex]
+                    sources[thisSourcesIndex].USNOBCatB2MAG=cat.B2MAG[thisCatIndex]  
+                    sources[thisSourcesIndex].USNOBCatXMatchDist=gcd(cat.RA[thisCatIndex],
+                                                                     cat.DEC[thisCatIndex],
+                                                                     sources[thisSourcesIndex].sExCatRA,
+                                                                     sources[thisSourcesIndex].sExCatDEC)*3600
+                elif cat.NAME == "skycamz" or cat.NAME == "skycamt":
+                    sources[thisSourcesIndex].SKYCAMREF=cat.REF[thisCatIndex]
+                    sources[thisSourcesIndex].RA=cat.RA[thisCatIndex] 
+                    sources[thisSourcesIndex].DEC=cat.DEC[thisCatIndex]
+                    sources[thisSourcesIndex].RAERR=cat.RAERR[thisCatIndex]
+                    sources[thisSourcesIndex].DECERR=cat.DECERR[thisCatIndex]
+                    sources[thisSourcesIndex].APASSREF=cat.APASSREF[thisCatIndex]
+                    sources[thisSourcesIndex].USNOBREF=cat.USNOBREF[thisCatIndex]
+                    sources[thisSourcesIndex].NOBS=cat.NOBS[thisCatIndex]
+                    sources[thisSourcesIndex].ROLLINGMEANAPASSMAG=cat.ROLLINGMEANAPASSMAG[thisCatIndex]
+                    sources[thisSourcesIndex].ROLLINGSTDEVAPASSMAG=cat.ROLLINGSTDEVAPASSMAG[thisCatIndex]   
+                    sources[thisSourcesIndex].ROLLINGMEANUSNOBMAG=cat.ROLLINGMEANUSNOBMAG[thisCatIndex] 
+                    sources[thisSourcesIndex].ROLLINGSTDEVUSNOBMAG=cat.ROLLINGSTDEVUSNOBMAG[thisCatIndex]
+                else:
+                    numUnmatchedSources = numUnmatchedSources + 1
+            else:
+                numUnmatchedSources = numUnmatchedSources + 1  
+                
         self.logger.info("(pipeline._XMatchSources) Removed " + str(numRemovedSourcesColour) + " source(s) due to colour index constraint")     
-                  
-        # create a list of unmatched sources
-        for idx in range(len(sExCatUnmatchedIndexes)):
-            unmatchedSources.append(source(in_filename, sExCat.RA[sExCatUnmatchedIndexes[idx]], 
-                                           sExCat.DEC[sExCatUnmatchedIndexes[idx]], 
-                                           sExCat.X_IMAGE[sExCatUnmatchedIndexes[idx]], 
-                                           sExCat.Y_IMAGE[sExCatUnmatchedIndexes[idx]], 
-                                           sExCat.FLUX_AUTO[sExCatUnmatchedIndexes[idx]], 
-                                           sExCat.FLUXERR_AUTO[sExCatUnmatchedIndexes[idx]], 
-                                           sExCat.MAG_AUTO[sExCatUnmatchedIndexes[idx]], 
-                                           sExCat.MAGERR_AUTO[sExCatUnmatchedIndexes[idx]], 
-                                           sExCat.BACKGROUND[sExCatUnmatchedIndexes[idx]], 
-                                           sExCat.ISOAREA_WORLD[sExCatUnmatchedIndexes[idx]], 
-                                           sExCat.FLAGS[sExCatUnmatchedIndexes[idx]], 
-                                           sExCat.FWHM_WORLD[sExCatUnmatchedIndexes[idx]], 
-                                           sExCat.ELONGATION[sExCatUnmatchedIndexes[idx]], 
-                                           sExCat.ELLIPTICITY[sExCatUnmatchedIndexes[idx]], 
-                                           sExCat.THETA_IMAGE[sExCatUnmatchedIndexes[idx]])
-            )        
-        self.logger.info("(pipeline._XMatchSources) Couldn't find a match for " + str(len(sExCatUnmatchedIndexes)) + " source(s)")              
+        self.logger.info("(pipeline._XMatchSources) Couldn't find a match for " + str(numUnmatchedSources) + " source(s)")              
           
-        if len(matchedSources) == 0:
-            self.err.setError(-9)
+        if len(sources) - numUnmatchedSources == 0:
+            self.err.setError(16)
             self.err.handleError()
-                    
-        return matchedSources, unmatchedSources      
+            return None
+            
+        return sources   
 
-    def _calibrateZP(self, matchedSources, cat):
+    def _calibrateZP(self, sources, cat):
         '''
         find colour dependent magnitude ZPs.
 
@@ -365,22 +377,24 @@ class pipeline():
         magDifference = []
         BRcolour = []
         if cat == "APASS":
+            matchedSources = [s for s in sources if s.APASSCatREF is not None]
             for i in matchedSources:
                 BRcolour.append(i.APASSCatBMAG - i.APASSCatRMAG)
                 magDifference.append(i.sExCatMagAuto - i.APASSCatRMAG)
         elif cat == "USNOB":
+            matchedSources = [s for s in sources if s.USNOBCatREF is not None]
             for i in matchedSources:
                 BRcolour.append(i.USNOBCatB2MAG - i.USNOBCatR2MAG)
                 magDifference.append(i.sExCatMagAuto - i.USNOBCatR2MAG)          
 
         # perform linear best fit
-        m, c = np.polyfit(BRcolour, magDifference, 1) 
+        coeffs, V = np.polyfit(BRcolour, magDifference, 1, cov=True) 
 
-        self.logger.info("(pipeline._calibrateSources) Coefficients of ZP calibration are [" + str(c) + ", " + str(m) + "]")
+        self.logger.info("(pipeline._calibrateSources) Coefficients of ZP calibration are [" + str(coeffs[0]) + ", " + str(coeffs[1]) + "]")
 
-        return magDifference, BRcolour, (c, m)
+        return magDifference, BRcolour, coeffs, V
 
-    def _storeToPostgresDatabase(self, matchedSources, unmatchedSources, cat):
+    def _storeToPostgresDatabase(self, f, sources, ZPs):
         '''
         store skycam image and extracted source information
         '''
@@ -393,99 +407,97 @@ class pipeline():
         except TypeError:
             self.err.setError(-20)
             self.err.handleError() 
-            
-        # create unique set of filenames from matchedSources list
-        images = set()
-        for source in matchedSources:
-            images.add(source.filename)
-   
-        # process images by filename
-        for i in images:
-            
-            ws_cat = wsc(ip, port, self.err, self.logger) 
-            
-            im = FITSFile(i, self.err) 
-	    im.openFITSFile()
+ 
+        ws_cat = wsc(ip, port, self.err, self.logger) 
+        
+        # check we haven't already processed this frame
+        #ws_cat.skycam_images_get_by_filename(self.params['schemaName'], os.path.basename(f))
+        if ws_cat.status != 200:
+            self.err.setError(15)
+            self.err.handleError()
+            return False  
+        res = json.loads(ws_cat.text)  
+        img_count = int(res[0]['count'])
+        if img_count > 0:
+            self.err.setError(18)
+            self.err.handleError()  
+            return False
+        else:
+            im = FITSFile(f, self.err) 
+            im.openFITSFile()
             im.getHeaders(0)
-            
-            ## ****************
-            ## **** images ****
-            ## ****************           
+                
+            ## *******************************
+            ## **** skycam[tz?].catalogue ****
+            ## *******************************           
             # we do a bit of data cleansing on the headers and replace forward slashes with unicode equivalent 
             # (otherwise REST interface breaks)
             keep = ['DATE-OBS', 'MJD', 'UTSTART', 'RA_CENT', 'DEC_CENT', 'RA_MIN', 'RA_MAX', 'DEC_MIN', 
                     'DEC_MAX', 'CCDSTEMP', 'CCDATEMP', 'AZDMD', 'AZIMUTH', 'ALTDMD', 'ALTITUDE', 'ROTSKYPA']
-            headers = {}
+            values = {}
             for key, val in im.headers.iteritems():
                 if key in keep:
                     try:
-                        headers[key.replace('-', '_')] = urllib.quote(val, safe='').strip()
+                        values[key.replace('-', '_')] = urllib.quote(val, safe='').strip()
                     except AttributeError:
-                        headers[key.replace('-', '_')] = val
-            headers['FILENAME'] = os.path.basename(i).strip()
-        
-            ws_cat.skycam_insert_image(self.params['schemaName'], headers, os.path.basename(i))     # insert
+                        values[key.replace('-', '_')] = val
+            values['FILENAME'] = os.path.basename(f).strip()
+            
+            # add frame zeropoint fields at zero colour term
+            for key, val in ZPs.iteritems():
+                values["FRAME_ZP_" + key] = val[0]
+                values["FRAME_ZP_STDEV_" + key] = val[1]
+                
+            # call web service to insert image
+            ws_cat.skycam_images_insert(self.params['schemaName'], values, os.path.basename(f))
             if ws_cat.status != 200:
                 self.err.setError(15)
                 self.err.handleError()
-                continue 
+                return False
+
             res = json.loads(ws_cat.text)
             img_id  = res['img_id']
             img_mjd = res['mjd']
 
-            self.logger.info("(pipeline._storeToPostgresDatabase) Stored image details for " + str(os.path.basename(i)) + " with img_id of " + str(img_id) + " in images table")
-            
-            ## *****************
-            ## **** sources ****
-            ## *****************  
-            
-            ### create list of matched and unmatched sources taken from this image
-            im_unmatchedSources = list(source for source in unmatchedSources if source.filename == i)
-            im_matchedSources = list(source for source in matchedSources if source.filename == i)
-            
-            for src in im_unmatchedSources + im_matchedSources:
-                s = {}
-                s['mjd']            = img_mjd
-                s['img_id']         = img_id
-                if src.USNOBCatREF is None: 
-                    s['usnobref']   = "NULL"
-                else:
-                    s['usnobref']   = str(src.USNOBCatREF)
-                if src.APASSCatREF is None: 
-                    s['apassref']   = "NULL"
-                else:
-                    s['apassref']   = str(src.APASSCatREF)
-                s['ra']             = float(src.sExCatRA)
-                s['dec']            = float(src.sExCatDEC)
-                s['x']              = float(src.sExCatx)
-                s['y']              = float(src.sExCaty)
-                s['fluxAuto']       = float(src.sExCatFluxAuto)
-                s['fluxErrAuto']    = float(src.sExCatFluxErrAuto)
-                s['magAuto']        = float(src.sExCatMagAuto)
-                s['magErrAuto']     = float(src.sExCatMagErrAuto) 
-                s['background']     = float(src.sExCatBackground)
-                s['isoareaWorld']   = float(src.sExCatIsoareaWorld)
-                s['SEFlags']        = float(src.sExCatSEFlags)
-                s['FWHM']           = float(src.sExCatFWHM)
-                s['elongation']     = float(src.sExCatElongation)
-                s['ellipticity']    = float(src.sExCatEllipticity)
-                s['thetaImage']     = float(src.sExCatThetaImage)
+            self.logger.info("(pipeline._storeToPostgresDatabase) Stored image details for " + str(os.path.basename(f)) + " with img_id of " + str(img_id) + " in images table")
                 
-                ws_cat.skycam_sources_add_to_buffer(self.params['schemaName'], s)       # add to buffer
-                if ws_cat.status != 200:
-                    self.err.setError(15)
-                    self.err.handleError()
-                    continue 
-                
-            ws_cat.skycam_sources_flush_buffer_to_db(self.params['schemaName'])         # insert
+            ## *******************************
+            ## **** skycam[tz?].catalogue ****
+            ## *******************************    
+            numNewSkycamCatalogueSources = 0
+            for s in sources:
+                # this source has at least one xmatch, but doesn't exist in the catalogue
+                if s.SKYCAMCatREF == None:
+                    values = {}
+                    values['xmatch_apassref']               = s.APASSCatREF
+                    values['xmatch_apass_distasec']         = s.APASSCatXMatchDist
+                    values['xmatch_usnobref']               = s.USNOBCatREF
+                    values['xmatch_usnob_distasec']         = s.USNOBCatXMatchDist
+                    values['radeg']                         = s.sExCatRA
+                    values['decdeg']                        = s.sExCatDEC
+                    values['raerrasec']                     = 0
+                    values['decerrasec']                    = 0
+                    values['nobs']                          = 1
+                    values['xmatch_apass_rollingmeanmag']   = 0 # TODO: Not from catalogue, but calculated from ZP     
+                    values['xmatch_apass_rollingstdevmag']  = 0 # TODO: Not from catalogue, but calculated from ZP   
+                    values['xmatch_usnob_rollingmeanmag']   = 0 # TODO: Not from catalogue, but calculated from ZP   
+                    values['xmatch_usnob_rollingstdevmag']  = 0 # TODO: Not from catalogue, but calculated from ZP  
+                     # call web service to add catalogue source to buffer
+                    ws_cat.skycam_catalogue_add_to_buffer(self.params['schemaName'], values)
+                    if ws_cat.status != 200:
+                        self.err.setError(15)
+                        self.err.handleError()
+                        return False
+                    numNewSkycamCatalogueSources = numNewSkycamCatalogueSources + 1
+                # TODO: this source has a different xmatch, check for smaller distance and overwrite? update field with number of times xmatch ahs changed?
+                # TODO: this source has same xmatch, update nobs, mag, raerr etc.
+      
+            # call web service to flush catalogue source buffer to database
+            #ws_cat.skycam_catalogue_flush_buffer_to_db(self.params['schemaName'])
             if ws_cat.status != 200:
                 self.err.setError(15)
                 self.err.handleError()
-                continue 
-            
-            self.logger.info("(pipeline._storeToPostgresDatabase) Stored source details for " + str(os.path.basename(i)) + " with img_id of " + str(img_id) + " in sources table")
+                return False
+            self.logger.info("(pipeline._storeToPostgresDatabase) " + str(numNewSkycamCatalogueSources) + " new Skycam source(s) added to catalogue")
                 
-            im.closeFITSFile() 
-            
-            
-
+            im.closeFITSFile()    

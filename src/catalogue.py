@@ -20,6 +20,7 @@ from ws import ws_catalogue as wsc
 
 class Catalogue():
     def __init__(self):  
+        self.NAME = []
         self.REF = []
         self.RA = []
         self.DEC = [] 
@@ -33,6 +34,7 @@ class Catalogue():
 class APASSCatalogue(Catalogue):
     def __init__(self, err, logger):
         Catalogue.__init__(self) 
+        self.NAME = "APASS"
         self.RAERR = []
         self.DECERR = []  
         self.VMAG = []  
@@ -86,7 +88,7 @@ class APASSCatalogue(Catalogue):
             
         # ws call outputs json
         ws_cat = wsc(ip, port, self.err, self.logger)
-        ws_cat.SCS('apass', raDeg, decDeg, searchRadius, 'rmag', -1, limitingMag, 'distance', maxNumSourcesXMatch, 'json')
+        ws_cat.SCS(self.NAME.lower(), raDeg, decDeg, searchRadius, 'rmag', -1, limitingMag, 'distance', maxNumSourcesXMatch, 'json')
         
         # append to internal catalogue
         if ws_cat.text is not None:
@@ -112,11 +114,86 @@ class APASSCatalogue(Catalogue):
                         self.insert(apassref=APASSREF, ra=RA, dec=DEC, raerr=RAERR, decerr=DECERR, vmag=VMAG, bmag=BMAG, gmag=GMAG, rmag=RMAG, imag=IMAG, 
                                     vmagerr=VMAGERR, bmagerr=BMAGERR, gmagerr=GMAGERR, rmagerr=RMAGERR, imagerr=IMAGERR, nobs=NOBS)
                     except ValueError: 
-                        continue                
+                        continue        
+                      
+class SkycamCatalogue(Catalogue):
+    def __init__(self, err, logger, schema):
+        Catalogue.__init__(self) 
+        self.NAME = schema
+        self.RAERR = []
+        self.DECERR = []  
+        self.APASSREF = []  
+        self.USNOBREF = []          
+        self.NOBS = []
+        self.ROLLINGMEANAPASSMAG = []  
+        self.ROLLINGSTDEVAPASSMAG = []    
+        self.ROLLINGMEANUSNOBMAG = []  
+        self.ROLLINGSTDEVUSNOBMAG = []      
+        self.err = err
+        self.logger = logger
+        
+    def insert(self, skycamref, ra, dec, raerr, decerr, apassref, usnobref, nobs, rollingmeanapassmag, rollingstdevapassmag, rollingmeanusnobmag, rollingstdevusnobmag):
+        '''
+        insert Skycam object into catalogue
+        '''
+        self.REF.append(skycamref)
+        self.RA.append(ra)    
+        self.DEC.append(dec)
+        self.RAERR.append(raerr)
+        self.DECERR.append(decerr)  
+        self.APASSREF.append(apassref)  
+        self.USNOBREF.append(usnobref)          
+        self.NOBS.append(nobs)
+        self.ROLLINGMEANAPASSMAG.append(rollingmeanapassmag) 
+        self.ROLLINGSTDEVAPASSMAG.append(rollingstdevapassmag)    
+        self.ROLLINGMEANUSNOBMAG.append(rollingmeanusnobmag)  
+        self.ROLLINGSTDEVUSNOBMAG.append(rollingstdevusnobmag)  
+
+    def query(self, pw_file, pw_file_id, raDeg, decDeg, searchRadius, limitingMag, maxNumSourcesXMatch, appendToCat=True):
+        ''' 
+        do SCS on skycam[tz?] catalogue
+        '''
+        try:
+            ip, port, username, password = rpf(pw_file, pw_file_id)
+            port = int(port)
+        except IOError:
+            self.err.setError(-17)
+            self.err.handleError()       
+        except TypeError:
+            self.err.setError(-18)
+            self.err.handleError()  
+            
+        # ws call outputs json
+        ws_cat = wsc(ip, port, self.err, self.logger)
+        ws_cat.SCS(self.NAME.lower(), raDeg, decDeg, searchRadius, 'xmatch_apass_rollingmeanmag', '-1', limitingMag, 'distance', maxNumSourcesXMatch, 'json')
+        
+        # append to internal catalogue
+        if ws_cat.text is not None:
+            if appendToCat:        
+                for entry in json.loads(ws_cat.text): 
+                    try:
+                        SKYCAMREF             = str(entry['skycamref'])
+                        RA                    = float(entry['ra'])
+                        DEC                   = float(entry['dec'])
+                        RAERR                 = float(entry['raerrasec'])
+                        DECERR                = float(entry['decerrasec'])
+                        APASSREF              = str(entry['xmatch_apassref'])
+                        USNOBREF              = str(entry['xmatch_usnobref'])
+                        NOBS                  = int(entry['nobs'])
+                        ROLLINGMEANAPASSMAG   = float(entry['xmatch_apass_rollingmeanmag'])
+                        ROLLINGSTDEVAPASSMAG  = float(entry['xmatch_apass_rollingstdevmag'])
+                        ROLLINGMEANUSNOBMAG   = float(entry['xmatch_usnob_rollingmeanmag'])
+                        ROLLINGSTDEVUSNOBMAG  = float(entry['xmatch_usnob_rollingstdevmag'])
+                        self.insert(skycamref=SKYCAMREF, ra=RA, dec=DEC, raerr=RAERR, decerr=DECERR, apassref=APASSREF, usnobref=USNOBREF, 
+                                    nobs=NOBS, rollingmeanapassmag=ROLLINGMEANAPASSMAG, rollingstdevapassmag=ROLLINGSTDEVAPASSMAG, 
+                                    rollingmeanusnobmag=ROLLINGMEANUSNOBMAG, rollingstdevusnobmag=ROLLINGSTDEVUSNOBMAG)
+                    except ValueError: 
+                        continue                           
 
 class USNOBCatalogue(Catalogue):
     def __init__(self, err, logger):
         Catalogue.__init__(self)  
+        self.NAME = "USNOB"
         self.RAERR = []
         self.DECERR = [] 
         self.R1MAG = []      
@@ -156,7 +233,7 @@ class USNOBCatalogue(Catalogue):
             
          # ws call outputs json
         ws_cat = wsc(ip, port, self.err, self.logger)
-        ws_cat.SCS('usnob', raDeg, decDeg, searchRadius, 'rmag1', -1, limitingMag, 'distance', maxNumSourcesXMatch, 'json')
+        ws_cat.SCS(self.NAME.lower(), raDeg, decDeg, searchRadius, 'rmag1', -1, limitingMag, 'distance', maxNumSourcesXMatch, 'json')
         
         # append to internal catalogue
         if ws_cat.text is not None:
@@ -179,6 +256,7 @@ class USNOBCatalogue(Catalogue):
 class sExCatalogue(Catalogue):
     def __init__(self, err, logger):
         Catalogue.__init__(self) 
+        self.NAME = "sEx"
         self.X_IMAGE = []
         self.Y_IMAGE = []
         self.FLUX_MAX = []

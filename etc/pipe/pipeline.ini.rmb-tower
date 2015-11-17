@@ -1,14 +1,14 @@
 [general]
-xmatch_cat:             APASS           ; (USNOB||APASS) - catalogue to match against
+xmatch_cat:             APASS,USNOB     ; (USNOB||&APASS) - csv of catalogues to match against
 max_processes:          8               ; ASYNC ONLY - maximum number of concurrent processes to spawn  
 obs_day_start:          17:30:00        ; ASYNC ONLY - start of observational day (used when deciding how to fork processes)
 obs_day_end:            09:00:00        ; ASYNC ONLY - end of observational day (used when deciding how to fork processes)
 t_sync_check:           300             ; SYNC ONLY - how often to check for new files (s)
 
 [paths]
-path_root_skymine:      /mnt/NAS/devel/skycam/Skycam-SkyMine/                   ; path to root of skycam directory
-path_root_res:          /mnt/NAS/devel/skycam/jobs/                             ; path to root of results directory
-path_pw_list:           /mnt/NAS/devel/skycam/Skycam-SkyMine/etc/pipe/PW_LIST   ; path to password list
+path_root_skymine:      /mnt/NAS/devel/skycam/Skycam-SkyMine/                               ; path to root of skycam directory
+path_root_res:          /mnt/NAS/devel/skycam/jobs/                                         ; path to root of results directory
+path_pw_list:           /mnt/NAS/devel/skycam/Skycam-SkyMine/etc/pipe/EXTERNAL_RESOURCES    ; path to external resources list file
 
 [skycamt_params]
 pointing_diff_thresh:    1.0                                                    ; max pointing angle difference (deg)
@@ -31,6 +31,7 @@ field_size:              21.0                                                   
 schema_name:             skycamt                                                ; Schema name in database
 min_num_matched_sources: 500                                                    ; Minimum number of matched sources per frame
 max_num_sources_xmatch:  99999999                                               ; Maximum number of sources to pull down from catalogue for crossmatching
+force_cat_query:         0                                                      ; (0||1) Do not reuse reference catalogue information, always perform a new query
 
 [skycamz_params]
 pointing_diff_thresh:    1.0                                                    ; max pointing angle difference (deg)
@@ -53,14 +54,15 @@ field_size:              1.0                                                    
 schema_name:             skycamz                                                ; Schema name in database
 min_num_matched_sources: 100                                                    ; Minimum number of matched sources per frame
 max_num_sources_xmatch:  99999999                                               ; Maximum number of sources to pull down from catalogue for crossmatching
+force_cat_query:         0                                                      ; (0||1) Do not reuse reference catalogue information, always perform a new query
 
 [lt_archive]
-pw_file_entry_id:       archive     ; pw list entry id where credentials can be found
+pw_file_entry_id:        archive     ; pw list entry id where credentials can be found
 
-[catalogue]                         ; this machine hosts the webservices for the usnob and apass catalogues
-pw_file_entry_id:       cat         ; pw list entry id where credentials can be found
+[catalogue]                          ; this machine hosts the webservices for the usnob and apass catalogues
+pw_file_entry_id:        cat         ; pw list entry id where credentials can be found
 
 [skycam_lookup]
-pw_file_entry_id:       sky_lup     ; pw list entry id where credentials can be found
+pw_file_entry_id:        sky_lup     ; pw list entry id where credentials can be found
 
 

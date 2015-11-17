@@ -33,7 +33,6 @@ if __name__ == "__main__":
 
     group2 = optparse.OptionGroup(parser, "Postgres database options")
     group2.add_option('--sdb', action='store_true', dest='storeToDB', help='store to db?')
-    #group2.add_option('--odb', action='store_true', dest='clobberDB', help='overwrite entries with existing filename in db?')
     parser.add_option_group(group2)
 
     options, args = parser.parse_args()
@@ -47,8 +46,7 @@ if __name__ == "__main__":
         'skipArchive'  : bool(options.skipArchive),
         'makePlots'  : bool(options.makePlots),
         'daemon' : bool(options.daemon),
-        'storeToDB' : bool(options.storeToDB)#,   
-        #'clobberDB' : bool(options.clobberDB)
+        'storeToDB' : bool(options.storeToDB)
     } 
 
     # ------------------------
@@ -88,11 +86,11 @@ if __name__ == "__main__":
         params['rootPath']                      = str(pipe_cfg['paths']['path_root_skymine'].rstrip("/") + "/") 
         params['resRootPath']                   = str(pipe_cfg['paths']['path_root_res'].rstrip("/") + "/") 
         params['path_pw_list']                  = str(pipe_cfg['paths']['path_pw_list'])
-        params['cat']                           = str(pipe_cfg['general']['xmatch_cat'])
+        params['cat']                           = [c.upper() for c in str(pipe_cfg['general']['xmatch_cat']).split(',')]
         params['processes']                     = int(pipe_cfg['general']['max_processes'])
         params['obs_day_start']                 = str(pipe_cfg['general']['obs_day_start'])
         params['obs_day_end']                   = str(pipe_cfg['general']['obs_day_end'])
-        params['t_sync_check']                  = float(pipe_cfg['general']['t_sync_check'])
+        params['t_sync_check']                  = float(pipe_cfg['general']['t_sync_check'])   
         params['archive_credentials_id']        = str(pipe_cfg['lt_archive']['pw_file_entry_id'])
         params['catalogue_credentials_id']      = str(pipe_cfg['catalogue']['pw_file_entry_id'])
         params['skycam_cat_db_credentials_id']  = str(pipe_cfg['catalogue']['pw_file_entry_id'])
@@ -118,6 +116,7 @@ if __name__ == "__main__":
         params['schemaName']                    = str(pipe_cfg[inst_cfg_header]['schema_name'])
         params['minNumMatchedSources']          = int(pipe_cfg[inst_cfg_header]['min_num_matched_sources'])
         params['maxNumSourcesXMatch']           = int(pipe_cfg[inst_cfg_header]['max_num_sources_xmatch'])
+        params['forceCatalogueQuery']           = bool(int(pipe_cfg[inst_cfg_header]['force_cat_query']))     
     except KeyError, e:
         logger.info("[run_pipe.go] Key/section " + str(e) + " appears to be missing.")
         exit(0) 
@@ -130,15 +129,19 @@ if __name__ == "__main__":
     
     params['tmpMockPath']   = params['tmpPath'] + 'mock/'
 
-    # input sanity checks
-    ## CATALOGUE
+    # some input sanity checks
     try:
         assert params['instrument'] == 'SkyCamZ' or params['instrument'] == 'SkyCamT' 
-        assert params['cat'] == "USNOB" or params['cat'] == "APASS"
     except AssertionError: 
-        logger.critical("(__main__) input sanity checks failed")
+        logger.critical("(__main__) instrument is invalid.")
         exit(0)
-
+    try:
+        for c in params['cat']:
+            assert c in ['USNOB', 'APASS', 'SKYCAM']
+    except AssertionError: 
+        logger.critical("(__main__) unknown reference catalogue.")
+        exit(0)
+        
     # ----------------------------
     # RUN PIPELINE ASYNCHRONOUSLY.
     # ----------------------------

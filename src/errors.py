@@ -22,7 +22,7 @@ class errors:
                                    -6:"(catalogue.sExCatalogue.query) Config file doesn't exist",
                                    -7:"(catalogue.sExCatalogue.query) Params file doesn't exist",
                                    -8:"",
-                                   -9:"(pipeline._XMatchSources_*) matchedSources list is empty",
+                                   -9:"",
                                    -10:"",
                                    -11:"(process.run_*) Failed to decompress file(s)",
                                    -12:"(process.run_*) Sorted image list is Nonetype. Probably no images found",
@@ -49,7 +49,10 @@ class errors:
                                    12:"(pipeline._XMatchSources) Image contains too few matched sources, ignoring",
                                    13:"(process.run_sync) Processing time is longer than sync check time",
                                    14:"(pipeline.run) No valid images found for this run",
-                                   15:"(ws.ws_catalogue.*) Web service did not return a status code of 200"
+                                   15:"(ws.ws_catalogue.*) Web service did not return a status code of 200",
+                                   16:"(pipeline._XMatchSources_*) matchedSources list is empty",
+                                   17:"(pipeline._XMatchSources) Image contains no cross-matched sources",
+                                   18:"(pipeline._storeToPostgresDatabase) Image already processed, ignoring"
                                    }
 
     def setError(self, newErrorCode):
