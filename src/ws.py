@@ -36,7 +36,7 @@ class ws_catalogue:
         self.status = req.status_code       
         
     def skycam_catalogue_flush_buffer_to_db(self, schema):    
-        req = requests.post('http://' + str(self.ip) + ':' + str(self.port) + '/skycam/tables/catalogue/buffer/' + schema)    
+        req = requests.post('http://' + str(self.ip) + ':' + str(self.port) + '/skycam/tables/catalogue/buffer/' + schema)  
         if req.status_code == 200:
             self.text   = req.text
         else:

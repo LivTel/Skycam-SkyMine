@@ -62,12 +62,14 @@ class pipeline():
                 if not self._hasPointingChanged(im):                                                                   # checks that pointing hasn't changed
                     sourceList = self._extractSources(f, im)                                                           # extract sources
                     ZPs = {}                                                                                           # we store ZP for each reference catalogue
+                    ZP_COEFFS = {}                                                                                     # and also ZP coeffs for each reference catalogue
                     for c in self.params['cat']:
                         sources = self._XMatchSources(im, doCatQuery, cat=self.RefCatAll[c], sources=sourceList)       # multiple catalogue cross-matching 
                         if sources is not None:                                                                        # did we match anything?
                             magDifference, BRcolour, zp_coeffs, V = self._calibrateZP(sources, cat=c)                  # frame zeropoint calculation
                             zp_stdev = np.sqrt(V[1,1])                                                                 # variance is last element of covariance matrix
                             ZPs[c] = (zp_coeffs[1], zp_stdev)                                                          # for zero colour term, take intercept
+                            ZP_COEFFS[c] = zp_coeffs
                             if self.params['makePlots']:
                                 plotZPCalibration(magDifference, BRcolour, ZPs[c],                                     # plots
                                                   float(self.params['lowerColourLimit']), 
@@ -79,7 +81,7 @@ class pipeline():
                                                   )
                     if self.params['storeToDB']:
                         sources = self._XMatchSources(im, True, cat=self.SkycamCat, sources=sourceList)   # match sources with preexisting Skycam catalogue, always requery
-                        self._storeToPostgresDatabase(f, sourceList, ZPs)                                 # store to database
+                        self._storeToPostgresDatabase(f, sourceList, ZPs, ZP_COEFFS)                      # store to database
                     if not self.params['forceCatalogueQuery']:
                         doCatQuery = False
                     valid_images.append(f)
@@ -341,18 +343,22 @@ class pipeline():
                                                                      sources[thisSourcesIndex].sExCatRA,
                                                                      sources[thisSourcesIndex].sExCatDEC)*3600
                 elif cat.NAME == "skycamz" or cat.NAME == "skycamt":
-                    sources[thisSourcesIndex].SKYCAMREF=cat.REF[thisCatIndex]
-                    sources[thisSourcesIndex].RA=cat.RA[thisCatIndex] 
-                    sources[thisSourcesIndex].DEC=cat.DEC[thisCatIndex]
-                    sources[thisSourcesIndex].RAERR=cat.RAERR[thisCatIndex]
-                    sources[thisSourcesIndex].DECERR=cat.DECERR[thisCatIndex]
-                    sources[thisSourcesIndex].APASSREF=cat.APASSREF[thisCatIndex]
-                    sources[thisSourcesIndex].USNOBREF=cat.USNOBREF[thisCatIndex]
-                    sources[thisSourcesIndex].NOBS=cat.NOBS[thisCatIndex]
-                    sources[thisSourcesIndex].ROLLINGMEANAPASSMAG=cat.ROLLINGMEANAPASSMAG[thisCatIndex]
-                    sources[thisSourcesIndex].ROLLINGSTDEVAPASSMAG=cat.ROLLINGSTDEVAPASSMAG[thisCatIndex]   
-                    sources[thisSourcesIndex].ROLLINGMEANUSNOBMAG=cat.ROLLINGMEANUSNOBMAG[thisCatIndex] 
-                    sources[thisSourcesIndex].ROLLINGSTDEVUSNOBMAG=cat.ROLLINGSTDEVUSNOBMAG[thisCatIndex]
+                    sources[thisSourcesIndex].SKYCAMCatREF=cat.REF[thisCatIndex]
+                    sources[thisSourcesIndex].SKYCAMCatRA=cat.RA[thisCatIndex] 
+                    sources[thisSourcesIndex].SKYCAMCatDEC=cat.DEC[thisCatIndex]
+                    sources[thisSourcesIndex].SKYCAMCatRAERR=cat.RAERR[thisCatIndex]
+                    sources[thisSourcesIndex].SKYCAMCatDECERR=cat.DECERR[thisCatIndex]
+                    sources[thisSourcesIndex].SKYCAMCatAPASSREF=cat.APASSREF[thisCatIndex]
+                    sources[thisSourcesIndex].SKYCAMCatUSNOBREF=cat.USNOBREF[thisCatIndex]
+                    sources[thisSourcesIndex].SKYCAMCatNOBS=cat.NOBS[thisCatIndex]
+                    sources[thisSourcesIndex].SKYCAMCatAPASSBRCOLOUR=cat.APASSXMATCHBRCOLOUR[thisCatIndex]
+                    sources[thisSourcesIndex].SKYCAMCatUSNOBBRCOLOUR=cat.USNOBXMATCHBRCOLOUR[thisCatIndex]
+                    sources[thisSourcesIndex].SKYCAMCatROLLINGMEANAPASSMAG=cat.ROLLINGMEANAPASSMAG[thisCatIndex]
+                    sources[thisSourcesIndex].SKYCAMCatROLLINGSTDEVAPASSMAG=cat.ROLLINGSTDEVAPASSMAG[thisCatIndex]   
+                    sources[thisSourcesIndex].SKYCAMCatROLLINGMEANUSNOBMAG=cat.ROLLINGMEANUSNOBMAG[thisCatIndex] 
+                    sources[thisSourcesIndex].SKYCAMCatROLLINGSTDEVUSNOBMAG=cat.ROLLINGSTDEVUSNOBMAG[thisCatIndex]
+                    sources[thisSourcesIndex].SKYCAMCatAPASSNUMTIMESSWITCHED=cat.APASSNUMTIMESSWITCHED[thisCatIndex] 
+                    sources[thisSourcesIndex].SKYCAMCatUSNOBNUMTIMESSWITCHED=cat.USNOBNUMTIMESSWITCHED[thisCatIndex]
                 else:
                     numUnmatchedSources = numUnmatchedSources + 1
             else:
@@ -394,7 +400,7 @@ class pipeline():
 
         return magDifference, BRcolour, coeffs, V
 
-    def _storeToPostgresDatabase(self, f, sources, ZPs):
+    def _storeToPostgresDatabase(self, f, sources, ZPs, ZP_COEFFS):
         '''
         store skycam image and extracted source information
         '''
@@ -411,13 +417,14 @@ class pipeline():
         ws_cat = wsc(ip, port, self.err, self.logger) 
         
         # check we haven't already processed this frame
-        #ws_cat.skycam_images_get_by_filename(self.params['schemaName'], os.path.basename(f))
+        '''ws_cat.skycam_images_get_by_filename(self.params['schemaName'], os.path.basename(f))
         if ws_cat.status != 200:
             self.err.setError(15)
             self.err.handleError()
             return False  
-        res = json.loads(ws_cat.text)  
-        img_count = int(res[0]['count'])
+        res = json.loads(ws_cat.text)
+        img_count = int(res[0]['count'])'''
+        img_count = 0
         if img_count > 0:
             self.err.setError(18)
             self.err.handleError()  
@@ -464,36 +471,106 @@ class pipeline():
             ## *******************************
             ## **** skycam[tz?].catalogue ****
             ## *******************************    
-            numNewSkycamCatalogueSources = 0
+            numNewSkycamCatalogueSources         = 0
+            numIncrementedSkycamCatalogueSources = 0
             for s in sources:
-                # this source has at least one xmatch, but doesn't exist in the catalogue
-                if s.SKYCAMCatREF == None:
-                    values = {}
-                    values['xmatch_apassref']               = s.APASSCatREF
-                    values['xmatch_apass_distasec']         = s.APASSCatXMatchDist
-                    values['xmatch_usnobref']               = s.USNOBCatREF
-                    values['xmatch_usnob_distasec']         = s.USNOBCatXMatchDist
-                    values['radeg']                         = s.sExCatRA
-                    values['decdeg']                        = s.sExCatDEC
-                    values['raerrasec']                     = 0
-                    values['decerrasec']                    = 0
-                    values['nobs']                          = 1
-                    values['xmatch_apass_rollingmeanmag']   = 0 # TODO: Not from catalogue, but calculated from ZP     
-                    values['xmatch_apass_rollingstdevmag']  = 0 # TODO: Not from catalogue, but calculated from ZP   
-                    values['xmatch_usnob_rollingmeanmag']   = 0 # TODO: Not from catalogue, but calculated from ZP   
-                    values['xmatch_usnob_rollingstdevmag']  = 0 # TODO: Not from catalogue, but calculated from ZP  
-                     # call web service to add catalogue source to buffer
-                    ws_cat.skycam_catalogue_add_to_buffer(self.params['schemaName'], values)
-                    if ws_cat.status != 200:
-                        self.err.setError(15)
-                        self.err.handleError()
-                        return False
-                    numNewSkycamCatalogueSources = numNewSkycamCatalogueSources + 1
-                # TODO: this source has a different xmatch, check for smaller distance and overwrite? update field with number of times xmatch ahs changed?
-                # TODO: this source has same xmatch, update nobs, mag, raerr etc.
-      
-            # call web service to flush catalogue source buffer to database
-            #ws_cat.skycam_catalogue_flush_buffer_to_db(self.params['schemaName'])
+                # ------
+                # UPSERT.
+                # we let database ON CONFLICT clause deal with whether this is an update or insert
+                # ------
+                values = {}
+                if s.SKYCAMCatREF == None:                                                       # this source doesn't exist in the catalogue
+                    values['skycamref']                       = None
+                    values['xmatch_apassref']                 = s.APASSCatREF
+                    values['xmatch_apass_distasec']           = s.APASSCatXMatchDist
+                    values['xmatch_usnobref']                 = s.USNOBCatREF
+                    values['xmatch_usnob_distasec']           = s.USNOBCatXMatchDist
+                    values['radeg']                           = s.sExCatRA
+                    values['decdeg']                          = s.sExCatDEC
+                    values['raerrasec']                       = 0                                 # we calculate an error when we have > 1 observation
+                    values['decerrasec']                      = 0                                 # 
+                    values['nobs']                            = 1   
+                    values['xmatch_apass_brcolour']           = None
+                    values['xmatch_apass_ntimesswitched']     = 0
+                    values['xmatch_usnob_brcolour']           = None
+                    values['xmatch_usnob_ntimesswitched']     = 0
+                    
+                    ## calculate magnitude from colour-dependent zp
+                    ### APASS
+                    if s.APASSCatREF is not None:                                                 # we can use the APASS colour terms
+                        values['xmatch_apass_brcolour']       = s.APASSCatBMAG-s.APASSCatRMAG
+                        zp = np.polyval(ZP_COEFFS['APASS'], values['xmatch_apass_brcolour'])
+                    else:
+                        zp = np.polyval(ZP_COEFFS['APASS'], 1.5)                                  # else we assign an average ZP using colour of 1.5
+                    calibrated_mag = s.sExCatMagAuto-zp
+                    values['xmatch_apass_rollingmeanmag']     = calibrated_mag
+                    values['xmatch_apass_rollingstdevmag']    = 0                                 # we calculate an error when we have > 1 observation
+                    
+                    ### USNOB
+                    if s.USNOBCatREF is not None:                                                 # we can use the USNOB colour terms
+                        values['xmatch_usnob_brcolour']       = s.USNOBCatB1MAG-s.USNOBCatR1MAG
+                        zp = np.polyval(ZP_COEFFS['USNOB'], values['xmatch_usnob_brcolour'])
+                    else:
+                        zp = np.polyval(ZP_COEFFS['USNOB'], 1.5)                                  # else we assign an average ZP using colour of 1.5
+                    calibrated_mag = s.sExCatMagAuto-zp                   
+                    values['xmatch_usnob_rollingmeanmag']     = calibrated_mag
+                    values['xmatch_usnob_rollingstdevmag']    = 0                                 # we calculate an error when we have > 1 observation   
+                    
+                    numNewSkycamCatalogueSources              = numNewSkycamCatalogueSources + 1
+                else:                                                                             # this source already exists in the catalogue
+                    values['skycamref']                       = s.SKYCAMCatREF
+                    if str(s.APASSCatREF) != str(s.SKYCAMCatAPASSREF):                            # found different APASS reference
+                      values['xmatch_apass_ntimesswitched']   = int(s.SKYCAMCatAPASSNUMTIMESSWITCHED)+1
+                    else:
+                      values['xmatch_apass_ntimesswitched']   = s.SKYCAMCatAPASSNUMTIMESSWITCHED
+                    if str(s.USNOBCatREF) != s.SKYCAMCatUSNOBREF:                                 # found different USNOB reference
+                      values['xmatch_usnob_ntimesswitched']   = int(s.SKYCAMCatUSNOBNUMTIMESSWITCHED)+1
+                    else:
+                      values['xmatch_usnob_ntimesswitched']   = s.SKYCAMCatUSNOBNUMTIMESSWITCHED
+                    values['xmatch_apassref']                 = s.APASSCatREF
+                    values['xmatch_apass_distasec']           = s.APASSCatXMatchDist
+                    values['xmatch_usnobref']                 = s.USNOBCatREF
+                    values['xmatch_usnob_distasec']           = s.USNOBCatXMatchDist
+                    values['radeg']       = calc_rolling_mean(s.SKYCAMCatRA, s.sExCatRA, s.SKYCAMCatNOBS+1)
+                    values['raerrasec']   = calc_rolling_stdev(s.SKYCAMCatRAERR, s.sExCatRA*3600, s.SKYCAMCatRA*3600, values['radeg']*3600, s.SKYCAMCatNOBS+1)  
+                    values['decdeg']      = calc_rolling_mean(s.SKYCAMCatDEC, s.sExCatDEC, s.SKYCAMCatNOBS+1)
+                    values['decerrasec']  = calc_rolling_stdev(s.SKYCAMCatDECERR, s.sExCatDEC*3600, s.SKYCAMCatDEC*3600, values['decdeg']*3600, s.SKYCAMCatNOBS+1)                     
+                    values['nobs']                            = s.SKYCAMCatNOBS+1
+                    values['xmatch_apass_brcolour']           = None
+                    values['xmatch_usnob_brcolour']           = None
+                    
+                    ## calculate magnitude from colour-dependent zp
+                    ### APASS
+                    if s.APASSCatREF is not None:                                                 # we can use the APASS colour terms
+                        values['xmatch_apass_brcolour']       = s.APASSCatBMAG-s.APASSCatRMAG
+                        zp = np.polyval(ZP_COEFFS['APASS'], values['xmatch_apass_brcolour'])
+                    else:
+                        zp = np.polyval(ZP_COEFFS['APASS'], 1.5)                                  # else we assign an average ZP using colour of 1.5
+                    calibrated_mag = s.sExCatMagAuto-zp
+                    values['xmatch_apass_rollingmeanmag']     = calc_rolling_mean(s.SKYCAMCatROLLINGMEANAPASSMAG, calibrated_mag, s.SKYCAMCatNOBS+1)
+                    values['xmatch_apass_rollingstdevmag']    = calc_rolling_stdev(s.SKYCAMCatROLLINGSTDEVAPASSMAG, calibrated_mag, s.SKYCAMCatROLLINGMEANAPASSMAG, 
+                                                                                   values['xmatch_apass_rollingmeanmag'], s.SKYCAMCatNOBS+1)
+                    ### USNOB
+                    if s.USNOBCatREF is not None:                                                 # we can use the USNOB colour terms
+                        values['xmatch_usnob_brcolour']       = s.USNOBCatB1MAG-s.USNOBCatR1MAG
+                        zp = np.polyval(ZP_COEFFS['USNOB'], values['xmatch_usnob_brcolour'])
+                    else:
+                        zp = np.polyval(ZP_COEFFS['USNOB'], 1.5)                                  # else we assign an average ZP using colour of 1.5
+                    calibrated_mag = s.sExCatMagAuto-zp                   
+                    values['xmatch_usnob_rollingmeanmag']     = calc_rolling_mean(s.SKYCAMCatROLLINGMEANUSNOBMAG, calibrated_mag, s.SKYCAMCatNOBS+1)
+                    values['xmatch_usnob_rollingstdevmag']    = calc_rolling_stdev(s.SKYCAMCatROLLINGSTDEVUSNOBMAG, calibrated_mag, s.SKYCAMCatROLLINGMEANUSNOBMAG, 
+                                                                                   values['xmatch_usnob_rollingmeanmag'], s.SKYCAMCatNOBS+1)  
+                    numIncrementedSkycamCatalogueSources      = numIncrementedSkycamCatalogueSources + 1
+                
+                ## call web service to add catalogue source to buffer
+                ws_cat.skycam_catalogue_add_to_buffer(self.params['schemaName'], values)
+                if ws_cat.status != 200:
+                    self.err.setError(15)
+                    self.err.handleError()
+                    return False                
+            
+            ## call web service to flush catalogue source buffer to database
+            ws_cat.skycam_catalogue_flush_buffer_to_db(self.params['schemaName'])
             if ws_cat.status != 200:
                 self.err.setError(15)
                 self.err.handleError()

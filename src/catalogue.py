@@ -125,14 +125,20 @@ class SkycamCatalogue(Catalogue):
         self.APASSREF = []  
         self.USNOBREF = []          
         self.NOBS = []
+        self.APASSXMATCHBRCOLOUR = []
+        self.USNOBXMATCHBRCOLOUR = []
+        self.APASSXMATCHDISTASEC = []
+        self.USNOBXMATCHDISTASEC = []
         self.ROLLINGMEANAPASSMAG = []  
         self.ROLLINGSTDEVAPASSMAG = []    
         self.ROLLINGMEANUSNOBMAG = []  
-        self.ROLLINGSTDEVUSNOBMAG = []      
+        self.ROLLINGSTDEVUSNOBMAG = []  
+        self.APASSNUMTIMESSWITCHED = []
+        self.USNOBNUMTIMESSWITCHED = []
         self.err = err
         self.logger = logger
         
-    def insert(self, skycamref, ra, dec, raerr, decerr, apassref, usnobref, nobs, rollingmeanapassmag, rollingstdevapassmag, rollingmeanusnobmag, rollingstdevusnobmag):
+    def insert(self, skycamref, ra, dec, raerr, decerr, apassref, usnobref, nobs, apassxmatchbrcolour, usnobxmatchbrcolour, apassxmatchdistasec, usnobxmatchdistasec, rollingmeanapassmag, rollingstdevapassmag, rollingmeanusnobmag, rollingstdevusnobmag, apassnumtimesswitched, usnobnumtimesswitched):
         '''
         insert Skycam object into catalogue
         '''
@@ -144,10 +150,16 @@ class SkycamCatalogue(Catalogue):
         self.APASSREF.append(apassref)  
         self.USNOBREF.append(usnobref)          
         self.NOBS.append(nobs)
+        self.APASSXMATCHBRCOLOUR.append(apassxmatchbrcolour)
+        self.USNOBXMATCHBRCOLOUR.append(usnobxmatchbrcolour)
+        self.APASSXMATCHDISTASEC.append(apassxmatchdistasec)
+        self.USNOBXMATCHDISTASEC.append(usnobxmatchdistasec)
         self.ROLLINGMEANAPASSMAG.append(rollingmeanapassmag) 
         self.ROLLINGSTDEVAPASSMAG.append(rollingstdevapassmag)    
         self.ROLLINGMEANUSNOBMAG.append(rollingmeanusnobmag)  
         self.ROLLINGSTDEVUSNOBMAG.append(rollingstdevusnobmag)  
+        self.APASSNUMTIMESSWITCHED.append(apassnumtimesswitched)  
+        self.USNOBNUMTIMESSWITCHED.append(usnobnumtimesswitched)
 
     def query(self, pw_file, pw_file_id, raDeg, decDeg, searchRadius, limitingMag, maxNumSourcesXMatch, appendToCat=True):
         ''' 
@@ -180,13 +192,22 @@ class SkycamCatalogue(Catalogue):
                         APASSREF              = str(entry['xmatch_apassref'])
                         USNOBREF              = str(entry['xmatch_usnobref'])
                         NOBS                  = int(entry['nobs'])
+                        APASSXMATCHBRCOLOUR   = str(entry['xmatch_apass_brcolour'])
+                        USNOBXMATCHBRCOLOUR   = str(entry['xmatch_usnob_brcolour'])
                         ROLLINGMEANAPASSMAG   = float(entry['xmatch_apass_rollingmeanmag'])
                         ROLLINGSTDEVAPASSMAG  = float(entry['xmatch_apass_rollingstdevmag'])
                         ROLLINGMEANUSNOBMAG   = float(entry['xmatch_usnob_rollingmeanmag'])
                         ROLLINGSTDEVUSNOBMAG  = float(entry['xmatch_usnob_rollingstdevmag'])
+                        APASSXMATCHDISTASEC   = str(entry['xmatch_apass_distasec'])
+                        USNOBXMATCHDISTASEC   = str(entry['xmatch_usnob_distasec'])
+                        APASSNUMTIMESSWITCHED = str(entry['xmatch_apass_ntimesswitched'])
+                        USNOBNUMTIMESSWITCHED = str(entry['xmatch_usnob_ntimesswitched'])
                         self.insert(skycamref=SKYCAMREF, ra=RA, dec=DEC, raerr=RAERR, decerr=DECERR, apassref=APASSREF, usnobref=USNOBREF, 
-                                    nobs=NOBS, rollingmeanapassmag=ROLLINGMEANAPASSMAG, rollingstdevapassmag=ROLLINGSTDEVAPASSMAG, 
-                                    rollingmeanusnobmag=ROLLINGMEANUSNOBMAG, rollingstdevusnobmag=ROLLINGSTDEVUSNOBMAG)
+                                    nobs=NOBS, apassxmatchbrcolour=APASSXMATCHBRCOLOUR, usnobxmatchbrcolour=USNOBXMATCHBRCOLOUR, 
+                                    rollingmeanapassmag=ROLLINGMEANAPASSMAG, rollingstdevapassmag=ROLLINGSTDEVAPASSMAG, 
+                                    rollingmeanusnobmag=ROLLINGMEANUSNOBMAG, rollingstdevusnobmag=ROLLINGSTDEVUSNOBMAG, 
+                                    apassxmatchdistasec=APASSXMATCHDISTASEC, usnobxmatchdistasec=USNOBXMATCHDISTASEC, 
+                                    apassnumtimesswitched=APASSNUMTIMESSWITCHED, usnobnumtimesswitched=USNOBNUMTIMESSWITCHED)
                     except ValueError: 
                         continue                           
 

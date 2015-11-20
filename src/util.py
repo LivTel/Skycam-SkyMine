@@ -17,6 +17,20 @@ import tarfile
 import pyspherematch as pysm
 from FITSFile import FITSFile
 
+def calc_rolling_mean(last_mean, new_x, k):
+    '''
+    http://www.johndcook.com/blog/standard_deviation/
+    calculate rolling mean
+    '''
+    return last_mean + (new_x-last_mean)/k
+  
+def calc_rolling_stdev(last_stdev, new_x, last_mean, this_mean, k):
+    '''
+    http://www.johndcook.com/blog/standard_deviation/
+    calculate rolling standard deviation
+    '''
+    return pow((last_stdev + (new_x - last_mean)*(new_x - this_mean))/(k-1), 0.5)
+  
 def compress_files(files, outFilename, logger):
     '''
     gzip list of files
