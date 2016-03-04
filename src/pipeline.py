@@ -61,17 +61,18 @@ class pipeline():
             if self._hasValidWCS(im):                                                                                  # checks that we have a valid WCS
                 if not self._hasPointingChanged(im):                                                                   # checks that pointing hasn't changed
                     sourceList = self._extractSources(f, im)                                                           # extract sources
-                    ZPs = {}                                                                                           # we store ZP for each reference catalogue
-                    ZP_COEFFS = {}                                                                                     # and also ZP coeffs for each reference catalogue
-                    for c in self.params['cat']:
-                        sources = self._XMatchSources(im, doCatQuery, cat=self.RefCatAll[c], sources=sourceList)       # multiple catalogue cross-matching 
-                        if sources is not None:                                                                        # did we match anything?
-                            magDifference, BRcolour, zp_coeffs, V = self._calibrateZP(sources, cat=c)                  # frame zeropoint calculation
-                            zp_stdev = np.sqrt(V[1,1])                                                                 # variance is last element of covariance matrix
-                            ZPs[c] = (zp_coeffs[1], zp_stdev)                                                          # for zero colour term, take intercept
-                            ZP_COEFFS[c] = zp_coeffs
-                            if self.params['makePlots']:
-                                plotZPCalibration(magDifference, BRcolour, ZPs[c],                                     # plots
+                    if sourceList is not None:
+                        ZPs = {}                                                                                           # we store ZP for each reference catalogue
+                        ZP_COEFFS = {}                                                                                     # and also ZP coeffs for each reference catalogue
+                        for c in self.params['cat']:
+                            sources = self._XMatchSources(im, doCatQuery, cat=self.RefCatAll[c], sources=sourceList)       # multiple catalogue cross-matching 
+                            if sources is not None:                                                                        # did we match anything?
+                                magDifference, BRcolour, zp_coeffs, V = self._calibrateZP(sources, cat=c)                  # frame zeropoint calculation
+                                zp_stdev = np.sqrt(V[1,1])                                                                 # variance is last element of covariance matrix
+                                ZPs[c] = (zp_coeffs[1], zp_stdev)                                                          # for zero colour term, take intercept
+                                ZP_COEFFS[c] = zp_coeffs
+                                if self.params['makePlots']:
+                                    plotZPCalibration(magDifference, BRcolour, ZPs[c],                                     # plots
                                                   float(self.params['lowerColourLimit']), 
                                                   float(self.params['upperColourLimit']), 
                                                   self.logger, 
@@ -79,12 +80,12 @@ class pipeline():
                                                   outImageFilename=self.params['resPath'] + os.path.basename(f) + "." + c + ".calibration.png", 
                                                   outDataFilename=self.params['resPath'] + os.path.basename(f) + "." + c + ".data.calibration", 
                                                   )
-                    if self.params['storeToDB']:
-                        sources = self._XMatchSources(im, True, cat=self.SkycamCat, sources=sourceList)   # match sources with preexisting Skycam catalogue, always requery
-                        self._storeToPostgresDatabase(f, sourceList, ZPs, ZP_COEFFS)                      # store to database
-                    if not self.params['forceCatalogueQuery']:
-                        doCatQuery = False
-                    valid_images.append(f)
+                        if self.params['storeToDB']:
+                            sources = self._XMatchSources(im, True, cat=self.SkycamCat, sources=sourceList)   # match sources with preexisting Skycam catalogue, always requery
+                            self._storeToPostgresDatabase(f, sourceList, ZPs, ZP_COEFFS)                      # store to database
+                        if not self.params['forceCatalogueQuery']:
+                            doCatQuery = False
+                        valid_images.append(f)
                 else:                                                                                     # skip processing file if pointing has changed
                     doCatQuery = True
                 self.lastPointing = self._getPointing(im)
@@ -154,7 +155,7 @@ class pipeline():
         if catdata is None:
             self.err.setError(9)
             self.err.handleError()
-            return False
+            return None
     
         ## check number of catalogue sources
         numExtSources = catdata.nrows
@@ -162,7 +163,7 @@ class pipeline():
         if numExtSources < int(self.params['minSources']):
             self.err.setError(4)
             self.err.handleError()
-            return False 
+            return None 
 
         ## check maximum elongation of sources
         elongation = round(max(catdata["ELONGATION"].tonumpy()), 2)
@@ -170,7 +171,7 @@ class pipeline():
         if elongation > float(self.params['maxElongation']):
             self.err.setError(5)
             self.err.handleError()
-            return False 
+            return None 
 
         ## check excess kurtosis of object angle   
         exKurtosis = round(stats.kurtosis(catdata["THETA_IMAGE"].tonumpy()), 2)
@@ -178,7 +179,7 @@ class pipeline():
         if exKurtosis > float(self.params['maxExKurtosis']):
             self.err.setError(6)
             self.err.handleError() 
-            return False 
+            return None 
 
         ## combined check of kurtosis and elongation
         sourcesCombCheck = 0
@@ -190,7 +191,7 @@ class pipeline():
         if sourcesCombCheck > float(self.params['maxSourcesCombCheck']):
             self.err.setError(7)
             self.err.handleError() 
-            return False 
+            return None 
 
         ## check maximum flux   
         flux = max(catdata['FLUX_MAX'].tonumpy())
@@ -198,7 +199,7 @@ class pipeline():
         if flux > float(self.params['maxFlux']):
             self.err.setError(8)
             self.err.handleError()
-            return False 
+            return None 
           
         # parse sExtractor catalogue
         sExCat = sExCatalogue(self.err, self.logger)
@@ -435,7 +436,7 @@ class pipeline():
             im.getHeaders(0)
                 
             ## *******************************
-            ## **** skycam[tz?].catalogue ****
+            ## **** skycam[tz?].images *******
             ## *******************************           
             # we do a bit of data cleansing on the headers and replace forward slashes with unicode equivalent 
             # (otherwise REST interface breaks)
@@ -473,18 +474,22 @@ class pipeline():
             ## *******************************    
             numNewSkycamCatalogueSources         = 0
             numIncrementedSkycamCatalogueSources = 0
+            dateObs = values['DATE_OBS']
             for s in sources:
                 # ------
                 # UPSERT.
-                # we let database ON CONFLICT clause deal with whether this is an update or insert
+                # we let the database ON CONFLICT clause deal with whether this is an update or insert, but we still
+                # need to set each field separately for both instances
                 # ------
                 values = {}
-                if s.SKYCAMCatREF == None:                                                       # this source doesn't exist in the catalogue
+                if s.SKYCAMCatREF == None:                                                        # this source doesn't exist in the catalogue
                     values['skycamref']                       = None
                     values['xmatch_apassref']                 = s.APASSCatREF
                     values['xmatch_apass_distasec']           = s.APASSCatXMatchDist
                     values['xmatch_usnobref']                 = s.USNOBCatREF
                     values['xmatch_usnob_distasec']           = s.USNOBCatXMatchDist
+                    values['firstobs_date']                   = dateObs
+                    values['lastobs_date']                    = dateObs
                     values['radeg']                           = s.sExCatRA
                     values['decdeg']                          = s.sExCatDEC
                     values['raerrasec']                       = 0                                 # we calculate an error when we have > 1 observation
@@ -531,6 +536,9 @@ class pipeline():
                     values['xmatch_apass_distasec']           = s.APASSCatXMatchDist
                     values['xmatch_usnobref']                 = s.USNOBCatREF
                     values['xmatch_usnob_distasec']           = s.USNOBCatXMatchDist
+                    values['firstobs_date']                   = "1970-01-01T00:00:00"             # unix timestamp of 0, can't use None as pushing date into string field
+                                                                                                  # won't insert anyway because of UPSERT ON CONFLICT clause
+                    values['lastobs_date']                    = dateObs
                     values['radeg']       = calc_rolling_mean(s.SKYCAMCatRA, s.sExCatRA, s.SKYCAMCatNOBS+1)
                     values['raerrasec']   = calc_rolling_stdev(s.SKYCAMCatRAERR, s.sExCatRA*3600, s.SKYCAMCatRA*3600, values['radeg']*3600, s.SKYCAMCatNOBS+1)  
                     values['decdeg']      = calc_rolling_mean(s.SKYCAMCatDEC, s.sExCatDEC, s.SKYCAMCatNOBS+1)
@@ -567,14 +575,59 @@ class pipeline():
                 if ws_cat.status != 200:
                     self.err.setError(15)
                     self.err.handleError()
-                    return False                
-            
-            ## call web service to flush catalogue source buffer to database
+                    return False  
+                  
+            ## call web service to flush catalogue buffer to database
             ws_cat.skycam_catalogue_flush_buffer_to_db(self.params['schemaName'])
             if ws_cat.status != 200:
                 self.err.setError(15)
                 self.err.handleError()
                 return False
-            self.logger.info("(pipeline._storeToPostgresDatabase) " + str(numNewSkycamCatalogueSources) + " new Skycam source(s) added to catalogue")
+            self.logger.info("(pipeline._storeToPostgresDatabase) " + str(numNewSkycamCatalogueSources) + " new Skycam source(s)")
+            self.logger.info("(pipeline._storeToPostgresDatabase) " + str(numIncrementedSkycamCatalogueSources) + " reobserved Skycam source(s)")
+            
+            res = json.loads(ws_cat.text)   # get inserted/updated skycamref
+            
+            ## *****************************
+            ## **** skycam[tz?].sources ****
+            ## *****************************   
+            numNewSkycamSources = 0  
+            for s, r in zip(sources, res):
+                values = {}
+                values['img_id']         = img_id
+                values['skycamref']      = r['skycamref']
+                values['mjd']            = img_mjd
+                values['radeg']          = s.sExCatRA
+                values['decdeg']         = s.sExCatDEC   
+                values['x_pix']          = s.sExCatx
+                values['y_pix']          = s.sExCaty
+                values['flux']           = s.sExCatFluxAuto
+                values['flux_err']       = s.sExCatFluxErrAuto
+                values['inst_mag']       = s.sExCatMagAuto
+                values['inst_mag_err']   = s.sExCatMagErrAuto
+                values['background']     = s.sExCatBackground
+                values['isoarea_world']  = s.sExCatIsoareaWorld
+                values['seflags']        = s.sExCatSEFlags
+                values['fwhm']           = s.sExCatFWHM
+                values['elongation']     = s.sExCatElongation
+                values['ellipticity']    = s.sExCatEllipticity
+                values['theta_image']    = s.sExCatThetaImage    
+                
+                ## call web service to add catalogue source to buffer
+                ws_cat.skycam_sources_add_to_buffer(self.params['schemaName'], values)
+                if ws_cat.status != 200:
+                    self.err.setError(15)
+                    self.err.handleError()
+                    return False      
+                  
+                numNewSkycamSources = numNewSkycamSources + 1   
+
+            ## call web service to flush catalogue buffer to database
+            ws_cat.skycam_sources_flush_buffer_to_db(self.params['schemaName'])
+            if ws_cat.status != 200:
+                self.err.setError(15)
+                self.err.handleError()
+                return False
+            self.logger.info("(pipeline._storeToPostgresDatabase) " + str(numNewSkycamSources) + " Skycam source(s) added to sources table")
                 
             im.closeFITSFile()    
