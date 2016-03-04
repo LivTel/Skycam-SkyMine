@@ -1,18 +1,18 @@
 [general]
 xmatch_cat:             APASS,USNOB     ; (USNOB||&APASS) - csv of catalogues to match against
-max_processes:          8               ; ASYNC ONLY - maximum number of concurrent processes to spawn  
+max_processes:          4               ; ASYNC ONLY - maximum number of concurrent processes to spawn  
 obs_day_start:          17:30:00        ; ASYNC ONLY - start of observational day (used when deciding how to fork processes)
 obs_day_end:            09:00:00        ; ASYNC ONLY - end of observational day (used when deciding how to fork processes)
 t_sync_check:           300             ; SYNC ONLY - how often to check for new files (s)
 
 [paths]
-path_root_skymine:      /mnt/NAS/devel/skycam/Skycam-SkyMine/                               ; path to root of skycam directory
-path_root_res:          /mnt/NAS/devel/skycam/jobs/                                         ; path to root of results directory
-path_pw_list:           /mnt/NAS/devel/skycam/Skycam-SkyMine/etc/pipe/EXTERNAL_RESOURCES    ; path to external resources list file
+path_root_skymine:      /home/eng/Skycam-SkyMine/                              	; path to root of skycam directory
+path_root_res:          /scratch/jobs/		                                ; path to root of results directory
+path_pw_list:           /home/eng/Skycam-SkyMine/etc/pipe/EXTERNAL_RESOURCES    ; path to external resources list file
 
 [skycamt_params]
 pointing_diff_thresh:    1.0                                                    ; max pointing angle difference (deg)
-sex_conf_file:           /mnt/NAS/devel/skycam/Skycam-SkyMine/etc/sex/T.sex.rmb-tower    ; path to Sextractor conf file
+sex_conf_file:          /home/eng/Skycam-SkyMine/etc/sex/T.sex.rmb-staging     	; path to Sextractor conf file
 min_sources:             600                                                    ; minimum extracted sources required
 max_elongation:          12.0                                                   ; maximum elongation permitted
 max_ex_kurtosis:         -0.45                                                  ; maximum excess kurtosis allowed
@@ -35,7 +35,7 @@ force_cat_query:         0                                                      
 
 [skycamz_params]
 pointing_diff_thresh:    1.0                                                    ; max pointing angle difference (deg)
-sex_conf_file:           /mnt/NAS/devel/skycam/Skycam-SkyMine/etc/sex/Z.sex.sex.rmb-tower     ; path to Sextractor conf file
+sex_conf_file:           /home/eng/Skycam-SkyMine/etc/sex/Z.sex.rmb-staging	; path to Sextractor conf file
 min_sources:             200                                                    ; minimum extracted sources required
 max_elongation:          12.0                                                   ; maximum elongation permitted
 max_ex_kurtosis:         -0.5                                                   ; maximum excess kurtosis allowed
