@@ -27,16 +27,16 @@ class ws_catalogue:
             self.text   = None
         self.status = req.status_code
         
-    def skycam_catalogue_add_to_buffer(self, schema, sources): 
-        req = requests.put('http://' + str(self.ip) + ':' + str(self.port) + '/skycam/tables/catalogue/buffer/' + schema + '/' + json.dumps(sources)) 
+    def skycam_catalogue_add_to_buffer(self, uuid, sources): 
+        req = requests.put('http://' + str(self.ip) + ':' + str(self.port) + '/skycam/tables/catalogue/buffer/' + uuid + '/' + json.dumps(sources)) 
         if req.status_code == 200:
             self.text   = req.text
         else:
             self.text   = None
         self.status = req.status_code       
         
-    def skycam_catalogue_flush_buffer_to_db(self, schema):    
-        req = requests.post('http://' + str(self.ip) + ':' + str(self.port) + '/skycam/tables/catalogue/buffer/' + schema)  
+    def skycam_catalogue_flush_buffer_to_db(self, schema, uuid):    
+        req = requests.post('http://' + str(self.ip) + ':' + str(self.port) + '/skycam/tables/catalogue/buffer/' + schema + '/' + uuid)  
         if req.status_code == 200:
             self.text   = req.text
         else:
@@ -67,16 +67,16 @@ class ws_catalogue:
             self.text   = None
         self.status = req.status_code
                 
-    def skycam_sources_add_to_buffer(self, schema, sources): 
-        req = requests.put('http://' + str(self.ip) + ':' + str(self.port) + '/skycam/tables/sources/buffer/' + schema + '/' + json.dumps(sources)) 
+    def skycam_sources_add_to_buffer(self, uuid, sources): 
+        req = requests.put('http://' + str(self.ip) + ':' + str(self.port) + '/skycam/tables/sources/buffer/' + uuid + '/' + json.dumps(sources)) 
         if req.status_code == 200:
             self.text   = req.text
         else:
             self.text   = None
         self.status = req.status_code       
         
-    def skycam_sources_flush_buffer_to_db(self, schema):    
-        req = requests.post('http://' + str(self.ip) + ':' + str(self.port) + '/skycam/tables/sources/buffer/' + schema)    
+    def skycam_sources_flush_buffer_to_db(self, schema, uuid):    
+        req = requests.post('http://' + str(self.ip) + ':' + str(self.port) + '/skycam/tables/sources/buffer/' + schema + '/' + uuid)    
         if req.status_code == 200:
             self.text   = req.text
         else:

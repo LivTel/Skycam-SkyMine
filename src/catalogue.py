@@ -25,6 +25,9 @@ class Catalogue():
         self.RA = []
         self.DEC = [] 
         
+    def _clear(self):
+        pass    
+        
     def insert(self):
         pass
       
@@ -50,6 +53,24 @@ class APASSCatalogue(Catalogue):
         self.NOBS = []
         self.err = err
         self.logger = logger
+        
+    def _clear(self):
+        self.REF = []
+        self.RA = []
+        self.DEC = []  
+        self.RAERR = []
+        self.DECERR = []  
+        self.VMAG = []  
+        self.BMAG = []          
+        self.GMAG = []
+        self.RMAG = []  
+        self.IMAG = []    
+        self.VMAGERR = []
+        self.BMAGERR = []
+        self.GMAGERR = []
+        self.RMAGERR = [] 
+        self.IMAGERR = []   
+        self.NOBS = []
         
     def insert(self, apassref, ra, dec, raerr, decerr, vmag, bmag, gmag, rmag, imag, vmagerr, bmagerr, gmagerr, rmagerr, imagerr, nobs):
         '''
@@ -86,6 +107,9 @@ class APASSCatalogue(Catalogue):
             self.err.setError(-18)
             self.err.handleError()  
             
+        # clear internal catalogue
+        self._clear()
+            
         # ws call outputs json
         ws_cat = wsc(ip, port, self.err, self.logger)
         ws_cat.SCS(self.NAME.lower(), raDeg, decDeg, searchRadius, 'rmag', -1, limitingMag, 'distance', maxNumSourcesXMatch, 'json')
@@ -114,8 +138,8 @@ class APASSCatalogue(Catalogue):
                         self.insert(apassref=APASSREF, ra=RA, dec=DEC, raerr=RAERR, decerr=DECERR, vmag=VMAG, bmag=BMAG, gmag=GMAG, rmag=RMAG, imag=IMAG, 
                                     vmagerr=VMAGERR, bmagerr=BMAGERR, gmagerr=GMAGERR, rmagerr=RMAGERR, imagerr=IMAGERR, nobs=NOBS)
                     except ValueError: 
-                        continue        
-                      
+                        continue         
+        
 class SkycamCatalogue(Catalogue):
     def __init__(self, err, logger, schema):
         Catalogue.__init__(self) 
@@ -137,6 +161,26 @@ class SkycamCatalogue(Catalogue):
         self.USNOBNUMTIMESSWITCHED = []
         self.err = err
         self.logger = logger
+        
+    def _clear(self):
+        self.REF = []
+        self.RA = []
+        self.DEC = [] 
+        self.RAERR = []
+        self.DECERR = []  
+        self.APASSREF = []  
+        self.USNOBREF = []          
+        self.NOBS = []
+        self.APASSXMATCHBRCOLOUR = []
+        self.USNOBXMATCHBRCOLOUR = []
+        self.APASSXMATCHDISTASEC = []
+        self.USNOBXMATCHDISTASEC = []
+        self.ROLLINGMEANAPASSMAG = []  
+        self.ROLLINGSTDEVAPASSMAG = []    
+        self.ROLLINGMEANUSNOBMAG = []  
+        self.ROLLINGSTDEVUSNOBMAG = []  
+        self.APASSNUMTIMESSWITCHED = []
+        self.USNOBNUMTIMESSWITCHED = []   
         
     def insert(self, skycamref, ra, dec, raerr, decerr, apassref, usnobref, nobs, apassxmatchbrcolour, usnobxmatchbrcolour, apassxmatchdistasec, usnobxmatchdistasec, rollingmeanapassmag, rollingstdevapassmag, rollingmeanusnobmag, rollingstdevusnobmag, apassnumtimesswitched, usnobnumtimesswitched):
         '''
@@ -175,6 +219,9 @@ class SkycamCatalogue(Catalogue):
             self.err.setError(-18)
             self.err.handleError()  
             
+        # clear internal catalogue
+        self._clear() 
+            
         # ws call outputs json
         ws_cat = wsc(ip, port, self.err, self.logger)
         ws_cat.SCS(self.NAME.lower(), raDeg, decDeg, searchRadius, 'xmatch_apass_rollingmeanmag', '-1', limitingMag, 'distance', maxNumSourcesXMatch, 'json')
@@ -209,7 +256,7 @@ class SkycamCatalogue(Catalogue):
                                     apassxmatchdistasec=APASSXMATCHDISTASEC, usnobxmatchdistasec=USNOBXMATCHDISTASEC, 
                                     apassnumtimesswitched=APASSNUMTIMESSWITCHED, usnobnumtimesswitched=USNOBNUMTIMESSWITCHED)
                     except ValueError: 
-                        continue                           
+                        continue 
 
 class USNOBCatalogue(Catalogue):
     def __init__(self, err, logger):
@@ -223,6 +270,17 @@ class USNOBCatalogue(Catalogue):
         self.B2MAG = []            
         self.err = err
         self.logger = logger
+        
+    def _clear(self):
+        self.REF = []
+        self.RA = []
+        self.DEC = []  
+        self.RAERR = []
+        self.DECERR = [] 
+        self.R1MAG = []      
+        self.B1MAG = []
+        self.R2MAG = []      
+        self.B2MAG = []  
 
     def insert(self, usnobref, ra, dec, raerr, decerr, r1mag, b1mag, r2mag, b2mag):
         '''
@@ -251,8 +309,11 @@ class USNOBCatalogue(Catalogue):
         except TypeError:
             self.err.setError(-18)
             self.err.handleError()  
-            
-         # ws call outputs json
+        
+        # clear internal catalogue
+        self._clear()
+        
+        # ws call outputs json
         ws_cat = wsc(ip, port, self.err, self.logger)
         ws_cat.SCS(self.NAME.lower(), raDeg, decDeg, searchRadius, 'rmag1', -1, limitingMag, 'distance', maxNumSourcesXMatch, 'json')
         

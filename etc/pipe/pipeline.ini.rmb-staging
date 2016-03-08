@@ -1,6 +1,6 @@
 [general]
 xmatch_cat:             APASS,USNOB     ; (USNOB||&APASS) - csv of catalogues to match against
-max_processes:          4               ; ASYNC ONLY - maximum number of concurrent processes to spawn  
+max_processes:          1               ; ASYNC ONLY - maximum number of concurrent processes to spawn  
 obs_day_start:          17:30:00        ; ASYNC ONLY - start of observational day (used when deciding how to fork processes)
 obs_day_end:            09:00:00        ; ASYNC ONLY - end of observational day (used when deciding how to fork processes)
 t_sync_check:           300             ; SYNC ONLY - how often to check for new files (s)

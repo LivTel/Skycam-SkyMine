@@ -9,6 +9,7 @@ import tempfile
 import subprocess
 import os
 import urllib
+import uuid
 
 import numpy as np
 import scipy.stats as stats
@@ -60,13 +61,15 @@ class pipeline():
             im.getHeaders(0)     
             if self._hasValidWCS(im):                                                                                  # checks that we have a valid WCS
                 if not self._hasPointingChanged(im):                                                                   # checks that pointing hasn't changed
-                    sourceList = self._extractSources(f, im)                                                           # extract sources
-                    if sourceList is not None:
+                    sources = self._extractSources(f, im)                                                              # extract sources
+                    if sources is not None:
                         ZPs = {}                                                                                           # we store ZP for each reference catalogue
                         ZP_COEFFS = {}                                                                                     # and also ZP coeffs for each reference catalogue
+                        catalogue_success = []										   # keep a track of whether the cross-matching spat out failure codes
                         for c in self.params['cat']:
-                            sources = self._XMatchSources(im, doCatQuery, cat=self.RefCatAll[c], sources=sourceList)       # multiple catalogue cross-matching 
-                            if sources is not None:                                                                        # did we match anything?
+                            sources, this_success = self._XMatchSources(im, doCatQuery, cat=self.RefCatAll[c], sources=sources) # multiple catalogue cross-matching 
+                            catalogue_success.append(this_success)
+                            if this_success is not False:
                                 magDifference, BRcolour, zp_coeffs, V = self._calibrateZP(sources, cat=c)                  # frame zeropoint calculation
                                 zp_stdev = np.sqrt(V[1,1])                                                                 # variance is last element of covariance matrix
                                 ZPs[c] = (zp_coeffs[1], zp_stdev)                                                          # for zero colour term, take intercept
@@ -80,9 +83,9 @@ class pipeline():
                                                   outImageFilename=self.params['resPath'] + os.path.basename(f) + "." + c + ".calibration.png", 
                                                   outDataFilename=self.params['resPath'] + os.path.basename(f) + "." + c + ".data.calibration", 
                                                   )
-                        if self.params['storeToDB']:
-                            sources = self._XMatchSources(im, True, cat=self.SkycamCat, sources=sourceList)   # match sources with preexisting Skycam catalogue, always requery
-                            self._storeToPostgresDatabase(f, sourceList, ZPs, ZP_COEFFS)                      # store to database
+                        if self.params['storeToDB'] and all(catalogue_success):
+                            sources, this_success = self._XMatchSources(im, True, cat=self.SkycamCat, sources=sources)     # match sources with preexisting Skycam catalogue, always requery
+                            self._storeToPostgresDatabase(f, sources, ZPs, ZP_COEFFS)                        	           # store to database
                         if not self.params['forceCatalogueQuery']:
                             doCatQuery = False
                         valid_images.append(f)
@@ -234,7 +237,7 @@ class pipeline():
         '''
         cross-match sources with catalogue(s).
 
-        returns a list of source instances (w/ reference catalogue fields filled).
+        returns a list of source instances (w/ reference catalogue fields filled) and a success flag.  
         '''
         self.logger.info("(pipeline._XMatchSources) Cross-matching sources with " + cat.NAME + " catalogue")
         
@@ -262,27 +265,28 @@ class pipeline():
         else:
             self.logger.info("(pipeline._XMatchSources) Pointing has not changed since last image. Using data from previous query")
 
-        # do cross-match
-        if len(cat.RA) > 0:
-            self.logger.info("(pipeline._XMatchSources) Cross-matching catalogues with a tolerance of " + str(matchingTolerance*3600) + " arcsec")
-            matches = pysm.spherematch([s.sExCatRA for s in sources], [s.sExCatDEC for s in sources], cat.RA, cat.DEC, tol=matchingTolerance, nnearest=1)
-                
-            sourcesMatchedIndexes = matches[0]
-            RefCatMatchedIndexes = matches[1]
-        
-            self.logger.info("(pipeline._XMatchSources) Cross-matched " + str(len(sourcesMatchedIndexes)) + " source(s)")
-        else:
-            self.err.setError(17)
+        # check to see if our catalogue returned any sources
+        if len(cat.RA) <= 0:
+	    self.err.setError(17)
             self.err.handleError()
-            return None
+            return sources, False
+	
+        # do cross-match	
+	self.logger.info("(pipeline._XMatchSources) Cross-matching catalogues with a tolerance of " + str(matchingTolerance*3600) + " arcsec")
+        matches = pysm.spherematch([s.sExCatRA for s in sources], [s.sExCatDEC for s in sources], cat.RA, cat.DEC, tol=matchingTolerance, nnearest=1)     
+        sourcesMatchedIndexes = matches[0]
+        RefCatMatchedIndexes = matches[1]
 
-        # if set, check number of matched sources is greater than the minimum required
-        if checkNumMatchedSources:
-            if len(sourcesMatchedIndexes) < int(self.params['minNumMatchedSources']):
-                self.err.setError(12)
-                self.err.handleError()
-                return None
-
+        # if set, check number of matched sources is greater than the minimum required     
+        if cat.NAME == "APASS" or cat.NAME == "USNOB":
+            if checkNumMatchedSources:
+                if len(sourcesMatchedIndexes) < int(self.params['minNumMatchedSources']):
+                    self.err.setError(12)
+                    self.err.handleError()
+                    return sources, False	  
+        
+        self.logger.info("(pipeline._XMatchSources) Cross-matched " + str(len(sourcesMatchedIndexes)) + " source(s)")
+	    
         # populate cross-matched catalogue variables for each source
         numRemovedSourcesColour = 0
         numUnmatchedSources = 0
@@ -298,7 +302,8 @@ class pipeline():
                         if BRColour < float(self.params['lowerColourLimit']) or BRColour > float(self.params['upperColourLimit']):
                             numRemovedSourcesColour = numRemovedSourcesColour + 1
                             numUnmatchedSources = numUnmatchedSources + 1
-                            continue     
+                            sources[source_idx] = None
+                            continue
                     ## update source information with cross-matched catalogue details
                     sources[thisSourcesIndex].APASSCatREF=cat.REF[thisCatIndex]
                     sources[thisSourcesIndex].APASSCatRA=cat.RA[thisCatIndex]
@@ -327,6 +332,7 @@ class pipeline():
                         if BRColour < float(self.params['lowerColourLimit']) or BRColour > float(self.params['upperColourLimit']):
                             numRemovedSourcesColour = numRemovedSourcesColour + 1
                             numUnmatchedSources = numUnmatchedSources + 1
+                            sources[source_idx] = None
                             continue
                           
                     ## update source information with cross-matched catalogue details
@@ -350,7 +356,7 @@ class pipeline():
                     sources[thisSourcesIndex].SKYCAMCatRAERR=cat.RAERR[thisCatIndex]
                     sources[thisSourcesIndex].SKYCAMCatDECERR=cat.DECERR[thisCatIndex]
                     sources[thisSourcesIndex].SKYCAMCatAPASSREF=cat.APASSREF[thisCatIndex]
-                    sources[thisSourcesIndex].SKYCAMCatUSNOBREF=cat.USNOBREF[thisCatIndex]
+                    sources[thisSourcesIndex].SKYCAMCatUSNOBREF=cat.USNOBREF[thisCatIndex].strip()
                     sources[thisSourcesIndex].SKYCAMCatNOBS=cat.NOBS[thisCatIndex]
                     sources[thisSourcesIndex].SKYCAMCatAPASSBRCOLOUR=cat.APASSXMATCHBRCOLOUR[thisCatIndex]
                     sources[thisSourcesIndex].SKYCAMCatUSNOBBRCOLOUR=cat.USNOBXMATCHBRCOLOUR[thisCatIndex]
@@ -367,13 +373,15 @@ class pipeline():
                 
         self.logger.info("(pipeline._XMatchSources) Removed " + str(numRemovedSourcesColour) + " source(s) due to colour index constraint")     
         self.logger.info("(pipeline._XMatchSources) Couldn't find a match for " + str(numUnmatchedSources) + " source(s)")              
-          
-        if len(sources) - numUnmatchedSources == 0:
-            self.err.setError(16)
-            self.err.handleError()
-            return None
+        
+        if cat.NAME == "APASS" or cat.NAME == "USNOB":
+            if len(sources) - numUnmatchedSources == 0:
+                self.err.setError(16)
+                self.err.handleError()
+                return sources, False
             
-        return sources   
+        sources = [s for s in sources if s != None]   	# filter out removed sources
+        return sources, True
 
     def _calibrateZP(self, sources, cat):
         '''
@@ -431,6 +439,7 @@ class pipeline():
             self.err.handleError()  
             return False
         else:
+	    this_uuid = str(uuid.uuid4())	# this is used to keep flush buffer calls separate for each pipeline instance
             im = FITSFile(f, self.err) 
             im.openFITSFile()
             im.getHeaders(0)
@@ -476,6 +485,8 @@ class pipeline():
             numIncrementedSkycamCatalogueSources = 0
             dateObs = values['DATE_OBS']
             for s in sources:
+	        #if s.APASSCatREF != "134709216":	#FIXME
+		#    continue				#FIXME
                 # ------
                 # UPSERT.
                 # we let the database ON CONFLICT clause deal with whether this is an update or insert, but we still
@@ -556,8 +567,8 @@ class pipeline():
                         zp = np.polyval(ZP_COEFFS['APASS'], 1.5)                                  # else we assign an average ZP using colour of 1.5
                     calibrated_mag = s.sExCatMagAuto-zp
                     values['xmatch_apass_rollingmeanmag']     = calc_rolling_mean(s.SKYCAMCatROLLINGMEANAPASSMAG, calibrated_mag, s.SKYCAMCatNOBS+1)
-                    values['xmatch_apass_rollingstdevmag']    = calc_rolling_stdev(s.SKYCAMCatROLLINGSTDEVAPASSMAG, calibrated_mag, s.SKYCAMCatROLLINGMEANAPASSMAG, 
-                                                                                   values['xmatch_apass_rollingmeanmag'], s.SKYCAMCatNOBS+1)
+                    values['xmatch_apass_rollingstdevmag']    = calc_rolling_stdev(s.SKYCAMCatROLLINGSTDEVAPASSMAG, calibrated_mag, s.SKYCAMCatROLLINGMEANAPASSMAG, values['xmatch_apass_rollingmeanmag'], s.SKYCAMCatNOBS+1)
+                    
                     ### USNOB
                     if s.USNOBCatREF is not None:                                                 # we can use the USNOB colour terms
                         values['xmatch_usnob_brcolour']       = s.USNOBCatB1MAG-s.USNOBCatR1MAG
@@ -566,19 +577,18 @@ class pipeline():
                         zp = np.polyval(ZP_COEFFS['USNOB'], 1.5)                                  # else we assign an average ZP using colour of 1.5
                     calibrated_mag = s.sExCatMagAuto-zp                   
                     values['xmatch_usnob_rollingmeanmag']     = calc_rolling_mean(s.SKYCAMCatROLLINGMEANUSNOBMAG, calibrated_mag, s.SKYCAMCatNOBS+1)
-                    values['xmatch_usnob_rollingstdevmag']    = calc_rolling_stdev(s.SKYCAMCatROLLINGSTDEVUSNOBMAG, calibrated_mag, s.SKYCAMCatROLLINGMEANUSNOBMAG, 
-                                                                                   values['xmatch_usnob_rollingmeanmag'], s.SKYCAMCatNOBS+1)  
+                    values['xmatch_usnob_rollingstdevmag']    = calc_rolling_stdev(s.SKYCAMCatROLLINGSTDEVUSNOBMAG, calibrated_mag, s.SKYCAMCatROLLINGMEANUSNOBMAG,  values['xmatch_usnob_rollingmeanmag'], s.SKYCAMCatNOBS+1)  
                     numIncrementedSkycamCatalogueSources      = numIncrementedSkycamCatalogueSources + 1
                 
                 ## call web service to add catalogue source to buffer
-                ws_cat.skycam_catalogue_add_to_buffer(self.params['schemaName'], values)
+                ws_cat.skycam_catalogue_add_to_buffer(this_uuid, values)
                 if ws_cat.status != 200:
                     self.err.setError(15)
                     self.err.handleError()
                     return False  
                   
             ## call web service to flush catalogue buffer to database
-            ws_cat.skycam_catalogue_flush_buffer_to_db(self.params['schemaName'])
+            ws_cat.skycam_catalogue_flush_buffer_to_db(self.params['schemaName'], this_uuid)
             if ws_cat.status != 200:
                 self.err.setError(15)
                 self.err.handleError()
@@ -614,7 +624,7 @@ class pipeline():
                 values['theta_image']    = s.sExCatThetaImage    
                 
                 ## call web service to add catalogue source to buffer
-                ws_cat.skycam_sources_add_to_buffer(self.params['schemaName'], values)
+                ws_cat.skycam_sources_add_to_buffer(this_uuid, values)
                 if ws_cat.status != 200:
                     self.err.setError(15)
                     self.err.handleError()
@@ -623,7 +633,7 @@ class pipeline():
                 numNewSkycamSources = numNewSkycamSources + 1   
 
             ## call web service to flush catalogue buffer to database
-            ws_cat.skycam_sources_flush_buffer_to_db(self.params['schemaName'])
+            ws_cat.skycam_sources_flush_buffer_to_db(self.params['schemaName'], this_uuid)
             if ws_cat.status != 200:
                 self.err.setError(15)
                 self.err.handleError()
