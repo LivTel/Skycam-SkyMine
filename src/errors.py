@@ -49,7 +49,7 @@ class errors:
                                    12:"(pipeline._XMatchSources) Image contains too few matched sources, ignoring",
                                    13:"(process.run_sync) Processing time is longer than sync check time",
                                    14:"(pipeline.run) No valid images found for this run",
-                                   15:"(ws.ws_catalogue.*) Web service did not return a status code of 200",
+                                   15:"(ws.*) Web service did not return a status code of 200",
                                    16:"(pipeline._XMatchSources_*) matchedSources list is empty",
                                    17:"(pipeline._XMatchSources) Image contains no cross-matched sources",
                                    18:"(pipeline._storeToPostgresDatabase) Image already processed, ignoring"

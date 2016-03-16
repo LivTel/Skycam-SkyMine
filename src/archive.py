@@ -97,14 +97,17 @@ class archive:
                 thisMonth = thisDate.split('-')[1]
                 thisDay = thisDate.split('-')[2]
 
-                thisFilePathOnArchive = "/mnt/newarchive1/lt/Skycam/" + thisYear + "/" + thisYear + thisMonth + thisDay + "/" + thisFilename + ".fits.gz"
-
-                self.logger.info("(archive.getData) retrieving image " + thisFilePathOnArchive)
                 try:
+		    thisFilePathOnArchive = "/mnt/newarchive1/lt/Skycam/" + thisYear + "/" + thisYear + thisMonth + thisDay + "/" + thisFilename + ".fits.gz"
+		    self.logger.info("(archive.getData) retrieving image " + thisFilePathOnArchive)
                     sftp.get(thisFilePathOnArchive, pathToDataDir + thisFilename + ".fits.gz")
                 except IOError:
-                    self.err.setError(10)
-                    self.err.handleError()    
+		    try:
+		        thisFilePathOnArchive = "/mnt/newarchive1/lt/Skycam/" + thisYear + "/" + thisYear + thisMonth + thisDay + "/" + thisFilename + ".fits"
+		        self.logger.info("(archive.getData) retrieving image " + thisFilePathOnArchive)
+		    except:
+                        self.err.setError(10)
+                        self.err.handleError()    
         finally:
             t.close()
     

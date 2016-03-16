@@ -13,6 +13,7 @@ import os
 import json
 from datetime import date, datetime, timedelta as td
 import time
+from lockfile import LockFile
 
 from process import process
 from util import read_ini
@@ -86,6 +87,7 @@ if __name__ == "__main__":
         params['rootPath']                      = str(pipe_cfg['paths']['path_root_skymine'].rstrip("/") + "/") 
         params['resRootPath']                   = str(pipe_cfg['paths']['path_root_res'].rstrip("/") + "/") 
         params['path_pw_list']                  = str(pipe_cfg['paths']['path_pw_list'])
+        params['path_lock']			= str(pipe_cfg['paths']['path_lock'])
         params['cat']                           = [c.upper() for c in str(pipe_cfg['general']['xmatch_cat']).split(',')]
         params['processes']                     = int(pipe_cfg['general']['max_processes'])
         params['obs_day_start']                 = str(pipe_cfg['general']['obs_day_start'])
@@ -141,6 +143,10 @@ if __name__ == "__main__":
     except AssertionError: 
         logger.critical("(__main__) unknown reference catalogue.")
         exit(0)
+        
+    ## create a lock file to avoid mid-air collisions when saving data to skycam database
+    lock = LockFile(params['path_lock'])
+    lock.break_lock()	# break the lock before we start, in case it's a relic
         
     # ----------------------------
     # RUN PIPELINE ASYNCHRONOUSLY.

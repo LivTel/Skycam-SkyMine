@@ -10,6 +10,7 @@ import subprocess
 import os
 import urllib
 import uuid
+from lockfile import LockFile
 
 import numpy as np
 import scipy.stats as stats
@@ -84,8 +85,14 @@ class pipeline():
                                                   outDataFilename=self.params['resPath'] + os.path.basename(f) + "." + c + ".data.calibration", 
                                                   )
                         if self.params['storeToDB'] and all(catalogue_success):
-                            sources, this_success = self._XMatchSources(im, True, cat=self.SkycamCat, sources=sources)     # match sources with preexisting Skycam catalogue, always requery
-                            self._storeToPostgresDatabase(f, sources, ZPs, ZP_COEFFS)                        	           # store to database
+			    lock = LockFile(self.params['path_lock'])
+			    try:
+			        lock.acquire()										       # we effectively lock any other threads from executing, otherwise mid-air collision
+                                sources, this_success = self._XMatchSources(im, True, cat=self.SkycamCat, sources=sources)     # match sources with preexisting Skycam catalogue, always requery
+                                self._storeToPostgresDatabase(f, sources, ZPs, ZP_COEFFS)                        	       # store to database
+                                lock.release()
+                            except:
+                                lock.release()										       # always release lock after exception, otherwise it'll hang other threads..
                         if not self.params['forceCatalogueQuery']:
                             doCatQuery = False
                         valid_images.append(f)
@@ -465,6 +472,10 @@ class pipeline():
                 values["FRAME_ZP_" + key] = val[0]
                 values["FRAME_ZP_STDEV_" + key] = val[1]
                 
+            # generate a uuid for this img_id and add to values
+            img_id = str(uuid.uuid4())
+            values['IMG_ID'] = img_id
+                
             # call web service to insert image
             ws_cat.skycam_images_insert(self.params['schemaName'], values, os.path.basename(f))
             if ws_cat.status != 200:
@@ -472,18 +483,17 @@ class pipeline():
                 self.err.handleError()
                 return False
 
-            res = json.loads(ws_cat.text)
-            img_id  = res['img_id']
-            img_mjd = res['mjd']
+            img_mjd 	= values['MJD']		# need this later
+            img_dateObs = values['DATE_OBS']
 
             self.logger.info("(pipeline._storeToPostgresDatabase) Stored image details for " + str(os.path.basename(f)) + " with img_id of " + str(img_id) + " in images table")
-                
+ 
             ## *******************************
             ## **** skycam[tz?].catalogue ****
             ## *******************************    
             numNewSkycamCatalogueSources         = 0
             numIncrementedSkycamCatalogueSources = 0
-            dateObs = values['DATE_OBS']
+            skycamrefs = []				# list to store matched / newly assigned skycamrefs
             for s in sources:
 	        #if s.APASSCatREF != "134709216":	#FIXME
 		#    continue				#FIXME
@@ -494,13 +504,13 @@ class pipeline():
                 # ------
                 values = {}
                 if s.SKYCAMCatREF == None:                                                        # this source doesn't exist in the catalogue
-                    values['skycamref']                       = None
+                    values['skycamref']                       = str(uuid.uuid4())		  # give it a new skycamref
                     values['xmatch_apassref']                 = s.APASSCatREF
                     values['xmatch_apass_distasec']           = s.APASSCatXMatchDist
                     values['xmatch_usnobref']                 = s.USNOBCatREF
                     values['xmatch_usnob_distasec']           = s.USNOBCatXMatchDist
-                    values['firstobs_date']                   = dateObs
-                    values['lastobs_date']                    = dateObs
+                    values['firstobs_date']                   = img_dateObs
+                    values['lastobs_date']                    = img_dateObs
                     values['radeg']                           = s.sExCatRA
                     values['decdeg']                          = s.sExCatDEC
                     values['raerrasec']                       = 0                                 # we calculate an error when we have > 1 observation
@@ -549,7 +559,7 @@ class pipeline():
                     values['xmatch_usnob_distasec']           = s.USNOBCatXMatchDist
                     values['firstobs_date']                   = "1970-01-01T00:00:00"             # unix timestamp of 0, can't use None as pushing date into string field
                                                                                                   # won't insert anyway because of UPSERT ON CONFLICT clause
-                    values['lastobs_date']                    = dateObs
+                    values['lastobs_date']                    = img_dateObs
                     values['radeg']       = calc_rolling_mean(s.SKYCAMCatRA, s.sExCatRA, s.SKYCAMCatNOBS+1)
                     values['raerrasec']   = calc_rolling_stdev(s.SKYCAMCatRAERR, s.sExCatRA*3600, s.SKYCAMCatRA*3600, values['radeg']*3600, s.SKYCAMCatNOBS+1)  
                     values['decdeg']      = calc_rolling_mean(s.SKYCAMCatDEC, s.sExCatDEC, s.SKYCAMCatNOBS+1)
@@ -579,33 +589,28 @@ class pipeline():
                     values['xmatch_usnob_rollingmeanmag']     = calc_rolling_mean(s.SKYCAMCatROLLINGMEANUSNOBMAG, calibrated_mag, s.SKYCAMCatNOBS+1)
                     values['xmatch_usnob_rollingstdevmag']    = calc_rolling_stdev(s.SKYCAMCatROLLINGSTDEVUSNOBMAG, calibrated_mag, s.SKYCAMCatROLLINGMEANUSNOBMAG,  values['xmatch_usnob_rollingmeanmag'], s.SKYCAMCatNOBS+1)  
                     numIncrementedSkycamCatalogueSources      = numIncrementedSkycamCatalogueSources + 1
+                    
+                ## add skycamref to list
+                skycamrefs.append(values['skycamref'])
                 
                 ## call web service to add catalogue source to buffer
                 ws_cat.skycam_catalogue_add_to_buffer(this_uuid, values)
                 if ws_cat.status != 200:
                     self.err.setError(15)
                     self.err.handleError()
-                    return False  
-                  
-            ## call web service to flush catalogue buffer to database
-            ws_cat.skycam_catalogue_flush_buffer_to_db(self.params['schemaName'], this_uuid)
-            if ws_cat.status != 200:
-                self.err.setError(15)
-                self.err.handleError()
-                return False
-            self.logger.info("(pipeline._storeToPostgresDatabase) " + str(numNewSkycamCatalogueSources) + " new Skycam source(s)")
-            self.logger.info("(pipeline._storeToPostgresDatabase) " + str(numIncrementedSkycamCatalogueSources) + " reobserved Skycam source(s)")
-            
-            res = json.loads(ws_cat.text)   # get inserted/updated skycamref
-            
+                    return False  	  
+		  
+	    self.logger.info("(pipeline._storeToPostgresDatabase) " + str(numNewSkycamCatalogueSources) + " new Skycam source(s) inserted into catalogue buffer")
+	    self.logger.info("(pipeline._storeToPostgresDatabase) catalogue buffer updated with " + str(numIncrementedSkycamCatalogueSources) + " reobserved Skycam source(s)")        
+             
             ## *****************************
             ## **** skycam[tz?].sources ****
             ## *****************************   
             numNewSkycamSources = 0  
-            for s, r in zip(sources, res):
+            for s, ref in zip(sources, skycamrefs):
                 values = {}
                 values['img_id']         = img_id
-                values['skycamref']      = r['skycamref']
+                values['skycamref']      = ref
                 values['mjd']            = img_mjd
                 values['radeg']          = s.sExCatRA
                 values['decdeg']         = s.sExCatDEC   
@@ -621,23 +626,25 @@ class pipeline():
                 values['fwhm']           = s.sExCatFWHM
                 values['elongation']     = s.sExCatElongation
                 values['ellipticity']    = s.sExCatEllipticity
-                values['theta_image']    = s.sExCatThetaImage    
+                values['theta_image']    = s.sExCatThetaImage       
                 
-                ## call web service to add catalogue source to buffer
+                ## call web service to add source to buffer
                 ws_cat.skycam_sources_add_to_buffer(this_uuid, values)
                 if ws_cat.status != 200:
                     self.err.setError(15)
                     self.err.handleError()
                     return False      
                   
-                numNewSkycamSources = numNewSkycamSources + 1   
-
-            ## call web service to flush catalogue buffer to database
-            ws_cat.skycam_sources_flush_buffer_to_db(self.params['schemaName'], this_uuid)
+                numNewSkycamSources = numNewSkycamSources + 1 
+                
+            self.logger.info("(pipeline._storeToPostgresDatabase) " + str(numNewSkycamSources) + " Skycam source(s) added to sources buffer")                
+         
+            ## call web service to flush all buffers to database in single transaction and set image success flag to true
+            ws_cat.skycam_flush_buffers_by_uuid_to_db(self.params['schemaName'], img_id, this_uuid)
             if ws_cat.status != 200:
                 self.err.setError(15)
                 self.err.handleError()
                 return False
-            self.logger.info("(pipeline._storeToPostgresDatabase) " + str(numNewSkycamSources) + " Skycam source(s) added to sources table")
+            self.logger.info("(pipeline._storeToPostgresDatabase) flushed buffers to database")      
                 
             im.closeFITSFile()    

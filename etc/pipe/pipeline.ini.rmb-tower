@@ -9,6 +9,7 @@ t_sync_check:           300             ; SYNC ONLY - how often to check for new
 path_root_skymine:      /mnt/NAS/devel/skycam/Skycam-SkyMine/                               ; path to root of skycam directory
 path_root_res:          /mnt/NAS/devel/skycam/jobs/                                         ; path to root of results directory
 path_pw_list:           /mnt/NAS/devel/skycam/Skycam-SkyMine/etc/pipe/EXTERNAL_RESOURCES    ; path to external resources list file
+path_lock:		/tmp/skycam-lock0						    ; path to skycam lock file
 
 [skycamt_params]
 pointing_diff_thresh:    1.0                                                    ; max pointing angle difference (deg)
