@@ -30,7 +30,7 @@ class ws_catalogue:
                                    + str(mag_faint_lim) + '/' + order_col + '/' + str(max_sources) + '/' + output_format) 
 		break
 	    except ConnectionError:
-	      	self.logger.warning("(ws.SCS) Webservice connection error (" + str(conn_retry_count) + "/" + str(self.max_retries) + "), retrying in 5s...")
+	      	self.logger.warning("(ws.SCS) Webservice connection error (" + str(conn_retry_count) + "/" + str(self.max_retries) + "), retrying in " + str(self.retry_delay) + "s")
 	        time.sleep(self.retry_delay)
 	    conn_retry_count = conn_retry_count + 1
         if req.status_code == 200:
@@ -39,14 +39,14 @@ class ws_catalogue:
             self.text   = None
         self.status = req.status_code
         
-    def skycam_catalogue_add_to_buffer(self, uuid, sources): 
+    def skycam_catalogue_add_to_buffer(self, uuid, values): 
         conn_retry_count = 1
         while conn_retry_count <= self.max_retries:
 	    try:
-                req = requests.put('http://' + str(self.ip) + ':' + str(self.port) + '/skycam/tables/catalogue/buffer/' + uuid + '/' + json.dumps(sources)) 
+                req = requests.put('http://' + str(self.ip) + ':' + str(self.port) + '/skycam/tables/catalogue/buffer/' + uuid, json=values) 
                 break
 	    except ConnectionError:
-	      	self.logger.warning("(ws.skycam_catalogue_add_to_buffer) Webservice connection error (" + str(conn_retry_count) + "/" + str(self.max_retries) + "), retrying in 5s...")
+	      	self.logger.warning("(ws.skycam_catalogue_add_to_buffer) Webservice connection error (" + str(conn_retry_count) + "/" + str(self.max_retries) + "), retrying in " + str(self.retry_delay) + "s")
 	        time.sleep(self.retry_delay)
 	    conn_retry_count = conn_retry_count + 1
         if req.status_code == 200:
@@ -62,7 +62,7 @@ class ws_catalogue:
                 req = requests.post('http://' + str(self.ip) + ':' + str(self.port) + '/skycam/tables/catalogue/buffer/' + schema + '/' + uuid)  
                 break
 	    except ConnectionError:
-	      	self.logger.warning("(ws.skycam_catalogue_flush_buffer_to_db) Webservice connection error (" + str(conn_retry_count) + "/" + str(self.max_retries) + "), retrying in 5s...")
+	      	self.logger.warning("(ws.skycam_catalogue_flush_buffer_to_db) Webservice connection error (" + str(conn_retry_count) + "/" + str(self.max_retries) + "), retrying in " + str(self.retry_delay) + "s")
 	        time.sleep(self.retry_delay)
 	    conn_retry_count = conn_retry_count + 1
         if req.status_code == 200:
@@ -75,10 +75,10 @@ class ws_catalogue:
         conn_retry_count = 1
         while conn_retry_count <= self.max_retries:
 	    try:
-                req = requests.post('http://' + str(self.ip) + ':' + str(self.port) + '/skycam/tables/catalogue/' + schema + '/' + json.dumps(values))  
+                req = requests.post('http://' + str(self.ip) + ':' + str(self.port) + '/skycam/tables/catalogue/' + schema, json=values)  
                 break
 	    except ConnectionError:
-	      	self.logger.warning("(ws.skycam_catalogue_insert) Webservice connection error (" + str(conn_retry_count) + "/" + str(self.max_retries) + "), retrying in 5s...")
+	      	self.logger.warning("(ws.skycam_catalogue_insert) Webservice connection error (" + str(conn_retry_count) + "/" + str(self.max_retries) + "), retrying in " + str(self.retry_delay) + "s")
 	        time.sleep(self.retry_delay)
 	    conn_retry_count = conn_retry_count + 1  
         if req.status_code == 200:
@@ -94,7 +94,7 @@ class ws_catalogue:
                 req = requests.post('http://' + str(self.ip) + ':' + str(self.port) + '/skycam/transactions/flush/' + schema + '/' + img_id + '/' + uuid)
                 break
 	    except ConnectionError:
-	      	self.logger.warning("(ws.skycam_flush_two_buffers_to_db) Webservice connection error (" + str(conn_retry_count) + "/" + str(self.max_retries) + "), retrying in 5s...")
+	      	self.logger.warning("(ws.skycam_flush_two_buffers_to_db) Webservice connection error (" + str(conn_retry_count) + "/" + str(self.max_retries) + "), retrying in " + str(self.retry_delay) + "s")
 	        time.sleep(self.retry_delay)
 	    conn_retry_count = conn_retry_count + 1             
         if req.status_code == 200:
@@ -110,7 +110,7 @@ class ws_catalogue:
                 req = requests.get('http://' + str(self.ip) + ':' + str(self.port) + '/skycam/tables/images/' + schema + '/filename/' + filename)  
                 break
 	    except ConnectionError:
-	      	self.logger.warning("(ws.skycam_images_get_by_filename) Webservice connection error (" + str(conn_retry_count) + "/" + str(self.max_retries) + "), retrying in 5s...")
+	      	self.logger.warning("(ws.skycam_images_get_by_filename) Webservice connection error (" + str(conn_retry_count) + "/" + str(self.max_retries) + "), retrying in " + str(self.retry_delay) + "s")
 	        time.sleep(self.retry_delay)
 	    conn_retry_count = conn_retry_count + 1     
         if req.status_code == 200:
@@ -119,14 +119,14 @@ class ws_catalogue:
             self.text   = None
         self.status = req.status_code
         
-    def skycam_images_insert(self, schema, values, filename):
+    def skycam_images_insert(self, schema, values):
         conn_retry_count = 1
         while conn_retry_count <= self.max_retries:
 	    try:
-                req = requests.post('http://' + str(self.ip) + ':' + str(self.port) + '/skycam/tables/images/' + schema + '/' + json.dumps(values))
+                req = requests.post('http://' + str(self.ip) + ':' + str(self.port) + '/skycam/tables/images/' + schema, json=values)
                 break
 	    except ConnectionError:
-	      	self.logger.warning("(ws.skycam_images_insert) Webservice connection error (" + str(conn_retry_count) + "/" + str(self.max_retries) + "), retrying in 5s...")
+	      	self.logger.warning("(ws.skycam_images_insert) Webservice connection error (" + str(conn_retry_count) + "/" + str(self.max_retries) + "), retrying in " + str(self.retry_delay) + "s")
 	        time.sleep(self.retry_delay)
 	    conn_retry_count = conn_retry_count + 1                 
         if req.status_code == 200:
@@ -135,14 +135,14 @@ class ws_catalogue:
             self.text   = None
         self.status = req.status_code        
                 
-    def skycam_sources_add_to_buffer(self, uuid, sources): 
+    def skycam_sources_add_to_buffer(self, uuid, values): 
         conn_retry_count = 1
         while conn_retry_count <= self.max_retries:
 	    try:
-                req = requests.put('http://' + str(self.ip) + ':' + str(self.port) + '/skycam/tables/sources/buffer/' + uuid + '/' + json.dumps(sources)) 
+                req = requests.put('http://' + str(self.ip) + ':' + str(self.port) + '/skycam/tables/sources/buffer/' + uuid, json=values) 
                 break
 	    except ConnectionError:
-	      	self.logger.warning("(ws.skycam_sources_add_to_buffer) Webservice connection error (" + str(conn_retry_count) + "/" + str(self.max_retries) + "), retrying in 5s...")
+	      	self.logger.warning("(ws.skycam_sources_add_to_buffer) Webservice connection error (" + str(conn_retry_count) + "/" + str(self.max_retries) + "), retrying in " + str(self.retry_delay) + "s")
 	        time.sleep(self.retry_delay)
 	    conn_retry_count = conn_retry_count + 1                       
         if req.status_code == 200:
@@ -158,7 +158,7 @@ class ws_catalogue:
                 req = requests.post('http://' + str(self.ip) + ':' + str(self.port) + '/skycam/tables/sources/buffer/' + schema + '/' + uuid)
                 break
 	    except ConnectionError:
-	      	self.logger.warning("(ws.skycam_sources_flush_buffer_to_db) Webservice connection error (" + str(conn_retry_count) + "/" + str(self.max_retries) + "), retrying in 5s...")
+	      	self.logger.warning("(ws.skycam_sources_flush_buffer_to_db) Webservice connection error (" + str(conn_retry_count) + "/" + str(self.max_retries) + "), retrying in " + str(self.retry_delay) + "s")
 	        time.sleep(self.retry_delay)
 	    conn_retry_count = conn_retry_count + 1             
         if req.status_code == 200:

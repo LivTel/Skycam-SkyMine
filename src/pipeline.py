@@ -477,7 +477,7 @@ class pipeline():
             values['IMG_ID'] = img_id
                 
             # call web service to insert image
-            ws_cat.skycam_images_insert(self.params['schemaName'], values, os.path.basename(f))
+            ws_cat.skycam_images_insert(self.params['schemaName'], values)
             if ws_cat.status != 200:
                 self.err.setError(15)
                 self.err.handleError()
@@ -493,7 +493,7 @@ class pipeline():
             ## *******************************    
             numNewSkycamCatalogueSources         = 0
             numIncrementedSkycamCatalogueSources = 0
-            skycamrefs = []				# list to store matched / newly assigned skycamrefs
+            catalogue_values_to_add		 = []
             for s in sources:
 	        #if s.APASSCatREF != "134709216":	#FIXME
 		#    continue				#FIXME
@@ -588,17 +588,16 @@ class pipeline():
                     calibrated_mag = s.sExCatMagAuto-zp                   
                     values['xmatch_usnob_rollingmeanmag']     = calc_rolling_mean(s.SKYCAMCatROLLINGMEANUSNOBMAG, calibrated_mag, s.SKYCAMCatNOBS+1)
                     values['xmatch_usnob_rollingstdevmag']    = calc_rolling_stdev(s.SKYCAMCatROLLINGSTDEVUSNOBMAG, calibrated_mag, s.SKYCAMCatROLLINGMEANUSNOBMAG,  values['xmatch_usnob_rollingmeanmag'], s.SKYCAMCatNOBS+1)  
-                    numIncrementedSkycamCatalogueSources      = numIncrementedSkycamCatalogueSources + 1
-                    
-                ## add skycamref to list
-                skycamrefs.append(values['skycamref'])
+                    numIncrementedSkycamCatalogueSources      = numIncrementedSkycamCatalogueSources + 1   
                 
-                ## call web service to add catalogue source to buffer
-                ws_cat.skycam_catalogue_add_to_buffer(this_uuid, values)
-                if ws_cat.status != 200:
-                    self.err.setError(15)
-                    self.err.handleError()
-                    return False  	  
+                catalogue_values_to_add.append(values)
+                
+	    ## call web service to add catalogue values to buffer
+	    ws_cat.skycam_catalogue_add_to_buffer(this_uuid, catalogue_values_to_add)
+	    if ws_cat.status != 200:
+	        self.err.setError(15)
+	        self.err.handleError()
+	        return False	
 		  
 	    self.logger.info("(pipeline._storeToPostgresDatabase) " + str(numNewSkycamCatalogueSources) + " new Skycam source(s) inserted into catalogue buffer")
 	    self.logger.info("(pipeline._storeToPostgresDatabase) catalogue buffer updated with " + str(numIncrementedSkycamCatalogueSources) + " reobserved Skycam source(s)")        
@@ -607,10 +606,11 @@ class pipeline():
             ## **** skycam[tz?].sources ****
             ## *****************************   
             numNewSkycamSources = 0  
-            for s, ref in zip(sources, skycamrefs):
+            sources_values_to_add	 = []
+            for s, v in zip(sources, catalogue_values_to_add):
                 values = {}
                 values['img_id']         = img_id
-                values['skycamref']      = ref
+                values['skycamref']      = v['skycamref']
                 values['mjd']            = img_mjd
                 values['radeg']          = s.sExCatRA
                 values['decdeg']         = s.sExCatDEC   
@@ -626,18 +626,20 @@ class pipeline():
                 values['fwhm']           = s.sExCatFWHM
                 values['elongation']     = s.sExCatElongation
                 values['ellipticity']    = s.sExCatEllipticity
-                values['theta_image']    = s.sExCatThetaImage       
+                values['theta_image']    = s.sExCatThetaImage  
                 
-                ## call web service to add source to buffer
-                ws_cat.skycam_sources_add_to_buffer(this_uuid, values)
-                if ws_cat.status != 200:
-                    self.err.setError(15)
-                    self.err.handleError()
-                    return False      
-                  
+                # add these values to list
+                sources_values_to_add.append(values)
+                
                 numNewSkycamSources = numNewSkycamSources + 1 
+  
+	    ws_cat.skycam_sources_add_to_buffer(this_uuid, sources_values_to_add)
+	    if ws_cat.status != 200:
+	        self.err.setError(15)
+	        self.err.handleError()
+	        return False   
                 
-            self.logger.info("(pipeline._storeToPostgresDatabase) " + str(numNewSkycamSources) + " Skycam source(s) added to sources buffer")                
+	    self.logger.info("(pipeline._storeToPostgresDatabase) " + str(numNewSkycamSources) + " Skycam source(s) added to sources buffer")                
          
             ## call web service to flush all buffers to database in single transaction and set image success flag to true
             ws_cat.skycam_flush_buffers_by_uuid_to_db(self.params['schemaName'], img_id, this_uuid)
