@@ -88,11 +88,14 @@ class pipeline():
 			    lock = LockFile(self.params['path_lock'])
 			    try:
 			        lock.acquire()										       # we effectively lock any other threads from executing, otherwise mid-air collision
+                                self.logger.info("(pipeline.run) locked database")
                                 sources, this_success = self._XMatchSources(im, True, cat=self.SkycamCat, sources=sources)     # match sources with preexisting Skycam catalogue, always requery
                                 self._storeToPostgresDatabase(f, sources, ZPs, ZP_COEFFS)                        	       # store to database
                                 lock.release()
+                                self.logger.info("(pipeline.run) released lock on database")
                             except:
                                 lock.release()										       # always release lock after exception, otherwise it'll hang other threads..
+                                self.logger.info("(pipeline.run) released database after fault")
                         if not self.params['forceCatalogueQuery']:
                             doCatQuery = False
                         valid_images.append(f)
