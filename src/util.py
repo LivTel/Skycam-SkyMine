@@ -72,18 +72,24 @@ def find_pointing_angle_diff(pointing1, pointing2):
 def hms_2_deg(HMS):
     return (float(HMS.split(':')[0])*15.) + (float(HMS.split(':')[1])*(15./60.)) + (float(HMS.split(':')[2])*(15./3600.));
 
-def read_password_file(pwFile, idToLookFor):
-    with open(pwFile) as f:
-        for line in f:
-            if not line.startswith('#'):
-                this_id = line.split()[0].strip('\n')
-                if this_id == idToLookFor:
-                    this_host = line.split()[1].strip('\n')
-                    this_port = line.split()[2].strip('\n')
-                    this_user = line.split()[3].strip('\n')
-                    this_pw = line.split()[4].strip('\n')
-                    return this_host, this_port, this_user, this_pw
-    return None
+def read_password_file(pwFile, idToLookFor, max_tries=10, retry_delay=1):
+    read_file_count = 1
+    while read_file_count <= max_tries:
+        try:
+            with open(pwFile, 'r') as f:
+                for line in f:
+                    if not line.startswith('#'):
+                        this_id = line.split()[0].strip('\n')
+                        if this_id == idToLookFor:
+                            this_host = line.split()[1].strip('\n')
+                            this_port = line.split()[2].strip('\n')
+                            this_user = line.split()[3].strip('\n')
+                            this_pw = line.split()[4].strip('\n')
+                            return this_host, this_port, this_user, this_pw
+	except IOError:
+	    time.sleep(retry_delay)
+	    read_file_count = read_file_count + 1
+    raise IOError
 
 def read_ini(path):
     ini = ConfigParser.ConfigParser()
