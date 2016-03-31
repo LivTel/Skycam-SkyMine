@@ -8,7 +8,7 @@ import logging
 import time
 
 import MySQLdb
-import psycopg
+import psycopg2
 
 from errors import errors
 

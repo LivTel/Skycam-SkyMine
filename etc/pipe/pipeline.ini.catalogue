@@ -1,0 +1,69 @@
+[general]
+xmatch_cat:             APASS,USNOB     ; (USNOB||&APASS) - csv of catalogues to match against
+max_processes:          7               ; ASYNC ONLY - maximum number of concurrent processes to spawn  
+obs_day_start:          17:30:00        ; ASYNC ONLY - start of observational day (used when deciding how to fork processes)
+obs_day_end:            09:00:00        ; ASYNC ONLY - end of observational day (used when deciding how to fork processes)
+t_sync_check:           300             ; SYNC ONLY - how often to check for new files (s)
+
+[paths]
+path_root_skymine:      /home/eng/Skycam-SkyMine                             		    ; path to root of skycam directory
+path_root_res:          /home/eng/jobs                                                      ; path to root of results directory
+path_pw_list:           /home/eng/Skycam-SkyMine/etc/pipe/EXTERNAL_RESOURCES    	    ; path to external resources list file
+path_lock:		/tmp/skycam-lock0						    ; path to skycam lock file
+
+[skycamt_params]
+pointing_diff_thresh:    1.0                                                    ; max pointing angle difference (deg)
+sex_conf_file:           /home/eng/Skycam-SkyMine/etc/sex/T.sex.catalogue       ; path to Sextractor conf file
+min_sources:             600                                                    ; minimum extracted sources required
+max_elongation:          12.0                                                   ; maximum elongation permitted
+max_ex_kurtosis:         -0.45                                                  ; maximum excess kurtosis allowed
+max_comb_ex_kurtosis:    5.0                                                    ; maximum elongation allowed in combined elongation/kurtosis check
+max_comb_elongation:     -0.8                                                   ; maximum excess kurtosis allowed in combined elongation/kurtosis check
+max_sources_comb_check:  5                                                      ; maximum number of sources allowed in combined elongation/kurtosis check
+max_flux:                10000000                                               ; maximum source flux in image
+field_margin:            10                                                     ; margin on CCD to ignore extracted sources (px)
+ccd_size_x:              1024                                                   ; size of CCD in x direction (px)
+ccd_size_y:              1024                                                   ; size of CCD in y direction (px)                        
+matching_tolerance:      0.0411                                                 ; catalogue cross matching tolerance (deg)
+upper_colour_limit:      4                                                      ; Upper (B-R) colour limit for calibration
+lower_colour_limit:      -1                                                     ; Lower (B-R) colour limit for calibration
+limiting_mag:            12                                                     ; Limiting magnitude (B and R)
+field_size:              21.0                                                   ; Size of field (deg)
+schema_name:             skycamt                                                ; Schema name in database
+min_num_matched_sources: 500                                                    ; Minimum number of matched sources per frame
+max_num_sources_xmatch:  99999999                                               ; Maximum number of sources to pull down from catalogue for crossmatching
+force_cat_query:         0                                                      ; (0||1) Do not reuse reference catalogue information, always perform a new query
+
+[skycamz_params]
+pointing_diff_thresh:    1.0                                                    ; max pointing angle difference (deg)
+sex_conf_file:           /home/eng/Skycam-SkyMine/etc/sex/Z.sex.catalogue       ; path to Sextractor conf file
+min_sources:             200                                                    ; minimum extracted sources required
+max_elongation:          12.0                                                   ; maximum elongation permitted
+max_ex_kurtosis:         -0.5                                                   ; maximum excess kurtosis allowed
+max_comb_ex_kurtosis:    5.0                                                    ; maximum elongation allowed in combined elongation/kurtosis check
+max_comb_elongation:     -1.15                                                  ; maximum excess kurtosis allowed in combined elongation/kurtosis check
+max_sources_comb_check:  2                                                      ; maximum number of sources allowed in combined elongation/kurtosis check
+max_flux:                10000000                                               ; maximum source flux in image
+field_margin:            10                                                     ; margin on CCD to ignore extracted sources (px)
+ccd_size_x:              1024                                                   ; size of CCD in x direction (px)
+ccd_size_y:              1024                                                   ; size of CCD in y direction (px) 
+matching_tolerance:      0.0025                                                 ; catalogue cross matching tolerance (deg)
+upper_colour_limit:      4                                                      ; Upper (B-R) colour limit for calibration
+lower_colour_limit:      -1                                                     ; Lower (B-R) colour limit for calibration
+limiting_mag:            18                                                     ; Limiting magnitude (B and R)
+field_size:              1.0                                                    ; Size of field (deg)
+schema_name:             skycamz                                                ; Schema name in database
+min_num_matched_sources: 100                                                    ; Minimum number of matched sources per frame
+max_num_sources_xmatch:  99999999                                               ; Maximum number of sources to pull down from catalogue for crossmatching
+force_cat_query:         0                                                      ; (0||1) Do not reuse reference catalogue information, always perform a new query
+
+[lt_archive]
+pw_file_entry_id:        archive     ; pw list entry id where credentials can be found
+
+[catalogue]                          ; this machine hosts the webservices for the usnob and apass catalogues
+pw_file_entry_id:        cat         ; pw list entry id where credentials can be found
+
+[skycam_lookup]
+pw_file_entry_id:        sky_lup     ; pw list entry id where credentials can be found
+
+
