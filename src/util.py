@@ -48,7 +48,7 @@ def compress_files(files, outFilename, logger):
     if sp.call(["gzip", tar_outFilename]):
         return False
 
-def decompress_files(path, logger):
+def decompress_files(path, err, logger):
     '''
     decompress .gz files in directory
     '''
@@ -56,7 +56,8 @@ def decompress_files(path, logger):
         if f.endswith(".fits.gz"):
     	    logger.info("(decompress_files) Decompressing file " + f)
             if sp.call(["gunzip", path + f]):
-                return False
+                err.setError(19)
+                err.handleError()
 
     return True
   

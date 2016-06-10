@@ -10,6 +10,7 @@ import subprocess
 import os
 import urllib
 import uuid
+from datetime import datetime
 from lockfile import LockFile
 
 import numpy as np
@@ -283,7 +284,7 @@ class pipeline():
 	
         # do cross-match	
 	self.logger.info("(pipeline._XMatchSources) Cross-matching catalogues with a tolerance of " + str(matchingTolerance*3600) + " arcsec")
-        matches = pysm.spherematch([s.sExCatRA for s in sources], [s.sExCatDEC for s in sources], cat.RA, cat.DEC, tol=matchingTolerance, nnearest=1)     
+        matches = pysm.spherematch([s.sExCatRA for s in sources], [s.sExCatDEC for s in sources], cat.RA, cat.DEC, self.logger, tol=matchingTolerance, nnearest=1)     
         sourcesMatchedIndexes = matches[0]
         RefCatMatchedIndexes = matches[1]
 
@@ -365,6 +366,8 @@ class pipeline():
                     sources[thisSourcesIndex].SKYCAMCatDEC=cat.DEC[thisCatIndex]
                     sources[thisSourcesIndex].SKYCAMCatRAERR=cat.RAERR[thisCatIndex]
                     sources[thisSourcesIndex].SKYCAMCatDECERR=cat.DECERR[thisCatIndex]
+                    sources[thisSourcesIndex].SKYCAMCatFIRSTOBSDATE=cat.FIRSTOBSDATE[thisCatIndex]
+                    sources[thisSourcesIndex].SKYCAMCatLASTOBSDATE=cat.LASTOBSDATE[thisCatIndex]
                     sources[thisSourcesIndex].SKYCAMCatAPASSREF=cat.APASSREF[thisCatIndex]
                     sources[thisSourcesIndex].SKYCAMCatUSNOBREF=cat.USNOBREF[thisCatIndex].strip()
                     sources[thisSourcesIndex].SKYCAMCatNOBS=cat.NOBS[thisCatIndex]
@@ -449,7 +452,7 @@ class pipeline():
             self.err.handleError()  
             return False
         else:
-	    this_uuid = str(uuid.uuid4())	# this is used to keep flush buffer calls separate for each pipeline instance
+	    this_uuid = str(uuid.uuid1())	# this is used to keep flush buffer calls separate for each pipeline instance
             im = FITSFile(f, self.err) 
             im.openFITSFile()
             im.getHeaders(0)
@@ -476,7 +479,7 @@ class pipeline():
                 values["FRAME_ZP_STDEV_" + key] = val[1]
                 
             # generate a uuid for this img_id and add to values
-            img_id = str(uuid.uuid4())
+            img_id = str(uuid.uuid1())
             values['IMG_ID'] = img_id
                 
             # call web service to insert image
@@ -487,7 +490,7 @@ class pipeline():
                 return False
 
             img_mjd 	= values['MJD']		# need this later
-            img_dateObs = values['DATE_OBS']
+            img_dateObs = values['DATE_OBS'].replace("%3A", ':')
 
             self.logger.info("(pipeline._storeToPostgresDatabase) Stored image details for " + str(os.path.basename(f)) + " with img_id of " + str(img_id) + " in images table")
  
@@ -497,9 +500,8 @@ class pipeline():
             numNewSkycamCatalogueSources         = 0
             numIncrementedSkycamCatalogueSources = 0
             catalogue_values_to_add		 = []
+
             for s in sources:
-	        #if s.APASSCatREF != "134709216":	#FIXME
-		#    continue				#FIXME
                 # ------
                 # UPSERT.
                 # we let the database ON CONFLICT clause deal with whether this is an update or insert, but we still
@@ -507,7 +509,7 @@ class pipeline():
                 # ------
                 values = {}
                 if s.SKYCAMCatREF == None:                                                        # this source doesn't exist in the catalogue
-                    values['skycamref']                       = str(uuid.uuid4())		  # give it a new skycamref
+                    values['skycamref']                       = str(uuid.uuid1())		  # give it a new skycamref
                     values['xmatch_apassref']                 = s.APASSCatREF
                     values['xmatch_apass_distasec']           = s.APASSCatXMatchDist
                     values['xmatch_usnobref']                 = s.USNOBCatREF
@@ -560,9 +562,11 @@ class pipeline():
                     values['xmatch_apass_distasec']           = s.APASSCatXMatchDist
                     values['xmatch_usnobref']                 = s.USNOBCatREF
                     values['xmatch_usnob_distasec']           = s.USNOBCatXMatchDist
-                    values['firstobs_date']                   = "1970-01-01T00:00:00"             # unix timestamp of 0, can't use None as pushing date into string field
-                                                                                                  # won't insert anyway because of UPSERT ON CONFLICT clause
-                    values['lastobs_date']                    = img_dateObs
+                    img_date_dt = datetime.strptime(img_dateObs, "%Y-%m-%dT%H:%M:%S")
+ 		    firstobs_date_dt = datetime.strptime(s.SKYCAMCatFIRSTOBSDATE.rstrip('.000Z'), "%Y-%m-%dT%H:%M:%S") 
+                    lastobs_date_dt = datetime.strptime(s.SKYCAMCatLASTOBSDATE.rstrip('.000Z'), "%Y-%m-%dT%H:%M:%S")
+                    values['firstobs_date']                   = img_date_dt.strftime("%Y-%m-%dT%H:%M:%S") if img_date_dt < firstobs_date_dt else firstobs_date_dt.strftime("%Y-%m-%dT%H:%M:%S")	# req check as multiprocessing
+                    values['lastobs_date']                    = img_date_dt.strftime("%Y-%m-%dT%H:%M:%S") if img_date_dt > lastobs_date_dt else lastobs_date_dt.strftime("%Y-%m-%dT%H:%M:%S")	# req check as multiprocessing
                     values['radeg']       = calc_rolling_mean(s.SKYCAMCatRA, s.sExCatRA, s.SKYCAMCatNOBS+1)
                     values['raerrasec']   = calc_rolling_stdev(s.SKYCAMCatRAERR, s.sExCatRA*3600, s.SKYCAMCatRA*3600, values['radeg']*3600, s.SKYCAMCatNOBS+1)  
                     values['decdeg']      = calc_rolling_mean(s.SKYCAMCatDEC, s.sExCatDEC, s.SKYCAMCatNOBS+1)
@@ -594,7 +598,7 @@ class pipeline():
                     numIncrementedSkycamCatalogueSources      = numIncrementedSkycamCatalogueSources + 1   
                 
                 catalogue_values_to_add.append(values)
-                
+
 	    ## call web service to add catalogue values to buffer
 	    ws_cat.skycam_catalogue_add_to_buffer(this_uuid, catalogue_values_to_add)
 	    if ws_cat.status != 200:
@@ -647,6 +651,7 @@ class pipeline():
             ## call web service to flush all buffers to database in single transaction and set image success flag to true
             ws_cat.skycam_flush_buffers_by_uuid_to_db(self.params['schemaName'], img_id, this_uuid)
             if ws_cat.status != 200:
+                #print catalogue_values_to_add
                 self.err.setError(15)
                 self.err.handleError()
                 return False

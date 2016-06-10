@@ -20,6 +20,7 @@ class ws_catalogue:
         self.text       = None
         self.max_retries = 5
         self.retry_delay = 20
+        self.timeout     = 180
         
     def SCS(self, catalogue, ra, dec, sr, mag_col, mag_bright_lim, mag_faint_lim, order_col, max_sources, output_format):
         conn_retry_count = 1
@@ -27,9 +28,9 @@ class ws_catalogue:
             try:
                 req = requests.get('http://' + str(self.ip) + ':' + str(self.port) + '/scs/' + str(catalogue) + '/' + str(ra) 
                                    + '/' + str(dec) + '/' + str(sr) + '/' + mag_col + '/' + str(mag_bright_lim) + '/' 
-                                   + str(mag_faint_lim) + '/' + order_col + '/' + str(max_sources) + '/' + output_format) 
+                                   + str(mag_faint_lim) + '/' + order_col + '/' + str(max_sources) + '/' + output_format, timeout=self.timeout)   
 		break
-	    except ConnectionError:
+	    except:
 	      	self.logger.warning("(ws.SCS) Webservice connection error (" + str(conn_retry_count) + "/" + str(self.max_retries) + "), retrying in " + str(self.retry_delay) + "s")
 	        time.sleep(self.retry_delay)
 	    conn_retry_count = conn_retry_count + 1

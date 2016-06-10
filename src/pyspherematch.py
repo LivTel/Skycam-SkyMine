@@ -9,13 +9,14 @@ Requires numpy and scipy.
 from __future__ import division
 
 import numpy as np
+from collections import Counter
 
 try:
     from scipy.spatial import cKDTree as KDT
 except ImportError:
     from scipy.spatial import KDTree as KDT
  
-def spherematch(ra1, dec1, ra2, dec2, tol=None, nnearest=1):
+def spherematch(ra1, dec1, ra2, dec2, logger, tol=None, nnearest=1):
     """
     Finds matches in one catalog to another.
  
@@ -92,7 +93,32 @@ def spherematch(ra1, dec1, ra2, dec2, tol=None, nnearest=1):
         idxs1 = idxs1[msk]
         idxs2 = idxs2[msk]
         ds = ds[msk]
- 
+
+        # The following removes duplicates, but with no distinction of merit
+        '''c = len(idxs1)
+        idxs2, idxs2_unique_indexes = np.unique(idxs2, return_index=True)
+        idxs1 = idxs1[idxs2_unique_indexes]
+        logger.info("(pipeline._XMatchSources.spherematch) Found " + str(c - len(idxs1)) + " duplicate(s) in spherematch")'''
+
+        # The following removes duplicates, only preserving the nearest match
+        c = len(idxs1)
+        for i in Counter(idxs2).most_common():		# returns ([idx_that_is_the_duplicate, count), ..])
+          if i[1] < 2:					# no more duplicates here
+            break
+          else:
+            duplicate_idxs = np.where(idxs2==i[0])[0]			# what are the indexes of the duplicate entry in idxs2 
+            duplicate_idxs_dist = ds[duplicate_idxs]			# find the corresponding distances
+            duplicate_idx_min = np.argmin[duplicate_idxs_dist]		# find the index of the minimum of the above
+            keep = duplicate_idxs[duplicate_idx_min]			# this the index in duplicate_idxs to be retained
+            for d in duplicate_idxs:					# delete all but "keep" index
+              if d == keep:
+                continue
+              else:
+                idxs1 = np.delete(idxs1, d)
+                idxs2 = np.delete(idxs2, d)
+                ds = np.delete(ds, d)
+        logger.info("(pipeline._XMatchSources.spherematch) Found " + str(c - len(idxs1)) + " duplicate(s) in spherematch")
+
     return idxs1, idxs2, ds
  
  

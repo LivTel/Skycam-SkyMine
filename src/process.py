@@ -98,9 +98,7 @@ class process():
                 shutil.copyfile(self.params['tmpMockPath'] + str(f), self.params['resPath'] + str(f))
     
         # decompress and sort images by ascending datetime
-        if not decompress_files(self.params['resPath'], self.logger):
-            self.err.setError(-11)
-            self.err.handleError()
+        decompress_files(self.params['resPath'], self.err, self.logger)
         images = sort_image_directory_UTC(self.params['resPath'], self.err, self.logger)
         if not images:
             self.err.setError(-12)
@@ -150,9 +148,7 @@ class process():
                     ltarchive.getData(MySQLLogFile, self.params['resPath'])
             
                     # decompress and sort images by ascending datetime
-                    if not decompress_files(self.params['resPath'], self.logger):
-                        self.err.setError(-11)
-                        self.err.handleError()
+                    decompress_files(self.params['resPath'], self.err, self.logger)
                     images = sort_image_directory_UTC(self.params['resPath'], self.err, self.logger)
                     if not images:
                         self.err.setError(-12)

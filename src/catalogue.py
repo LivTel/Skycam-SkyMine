@@ -113,7 +113,7 @@ class APASSCatalogue(Catalogue):
         # ws call outputs json
         ws_cat = wsc(ip, port, self.err, self.logger)
         ws_cat.SCS(self.NAME.lower(), raDeg, decDeg, searchRadius, 'rmag', -1, limitingMag, 'distance', maxNumSourcesXMatch, 'json')
-        
+
         # append to internal catalogue
         if ws_cat.text is not None:
             if appendToCat:        
@@ -146,6 +146,8 @@ class SkycamCatalogue(Catalogue):
         self.NAME = schema
         self.RAERR = []
         self.DECERR = []  
+        self.FIRSTOBSDATE = []
+        self.LASTOBSDATE = []
         self.APASSREF = []  
         self.USNOBREF = []          
         self.NOBS = []
@@ -168,6 +170,8 @@ class SkycamCatalogue(Catalogue):
         self.DEC = [] 
         self.RAERR = []
         self.DECERR = []  
+        self.FIRSTOBSDATE = []
+        self.LASTOBSDATE = []
         self.APASSREF = []  
         self.USNOBREF = []          
         self.NOBS = []
@@ -182,7 +186,7 @@ class SkycamCatalogue(Catalogue):
         self.APASSNUMTIMESSWITCHED = []
         self.USNOBNUMTIMESSWITCHED = []   
         
-    def insert(self, skycamref, ra, dec, raerr, decerr, apassref, usnobref, nobs, apassxmatchbrcolour, usnobxmatchbrcolour, apassxmatchdistasec, usnobxmatchdistasec, rollingmeanapassmag, rollingstdevapassmag, rollingmeanusnobmag, rollingstdevusnobmag, apassnumtimesswitched, usnobnumtimesswitched):
+    def insert(self, skycamref, ra, dec, raerr, decerr, firstobsdate, lastobsdate, apassref, usnobref, nobs, apassxmatchbrcolour, usnobxmatchbrcolour, apassxmatchdistasec, usnobxmatchdistasec, rollingmeanapassmag, rollingstdevapassmag, rollingmeanusnobmag, rollingstdevusnobmag, apassnumtimesswitched, usnobnumtimesswitched):
         '''
         insert Skycam object into catalogue
         '''
@@ -191,6 +195,8 @@ class SkycamCatalogue(Catalogue):
         self.DEC.append(dec)
         self.RAERR.append(raerr)
         self.DECERR.append(decerr)  
+        self.FIRSTOBSDATE.append(firstobsdate)
+        self.LASTOBSDATE.append(lastobsdate)
         self.APASSREF.append(apassref)  
         self.USNOBREF.append(usnobref)          
         self.NOBS.append(nobs)
@@ -236,6 +242,8 @@ class SkycamCatalogue(Catalogue):
                         DEC                   = float(entry['dec'])
                         RAERR                 = float(entry['raerrasec'])
                         DECERR                = float(entry['decerrasec'])
+                        FIRSTOBSDATE          = str(entry['firstobs_date'])
+                        LASTOBSDATE           = str(entry['lastobs_date'])
                         APASSREF              = str(entry['xmatch_apassref'])
                         USNOBREF              = str(entry['xmatch_usnobref'])
                         NOBS                  = int(entry['nobs'])
@@ -249,7 +257,8 @@ class SkycamCatalogue(Catalogue):
                         USNOBXMATCHDISTASEC   = str(entry['xmatch_usnob_distasec'])
                         APASSNUMTIMESSWITCHED = str(entry['xmatch_apass_ntimesswitched'])
                         USNOBNUMTIMESSWITCHED = str(entry['xmatch_usnob_ntimesswitched'])
-                        self.insert(skycamref=SKYCAMREF, ra=RA, dec=DEC, raerr=RAERR, decerr=DECERR, apassref=APASSREF, usnobref=USNOBREF, 
+                        self.insert(skycamref=SKYCAMREF, ra=RA, dec=DEC, raerr=RAERR, decerr=DECERR, firstobsdate=FIRSTOBSDATE, lastobsdate=LASTOBSDATE, 
+                                    apassref=APASSREF, usnobref=USNOBREF, 
                                     nobs=NOBS, apassxmatchbrcolour=APASSXMATCHBRCOLOUR, usnobxmatchbrcolour=USNOBXMATCHBRCOLOUR, 
                                     rollingmeanapassmag=ROLLINGMEANAPASSMAG, rollingstdevapassmag=ROLLINGSTDEVAPASSMAG, 
                                     rollingmeanusnobmag=ROLLINGMEANUSNOBMAG, rollingstdevusnobmag=ROLLINGSTDEVUSNOBMAG, 

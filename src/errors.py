@@ -24,7 +24,7 @@ class errors:
                                    -8:"",
                                    -9:"",
                                    -10:"",
-                                   -11:"(process.run_*) Failed to decompress file(s)",
+                                   -11:"",
                                    -12:"(process.run_*) Sorted image list is Nonetype. Probably no images found",
                                    -13:"(process._create_output_dir) res directory exists but clobber is not set",
                                    -14:"(database_*.execute) execute query failed",
@@ -51,8 +51,9 @@ class errors:
                                    14:"(pipeline.run) No valid images found for this run",
                                    15:"(ws.*) Web service did not return a status code of 200",
                                    16:"(pipeline._XMatchSources_*) matchedSources list is empty",
-                                   17:"(pipeline._XMatchSources) Image contains no cross-matched sources",
-                                   18:"(pipeline._storeToPostgresDatabase) Image already processed, ignoring"
+                                   17:"(pipeline._XMatchSources) Query returned no sources",
+                                   18:"(pipeline._storeToPostgresDatabase) Image already processed, ignoring",
+				   19:"(util.decompress_files) Failed to decompress a file"
                                    }
 
     def setError(self, newErrorCode):
