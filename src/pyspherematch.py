@@ -108,7 +108,7 @@ def spherematch(ra1, dec1, ra2, dec2, logger, tol=None, nnearest=1):
           else:
             duplicate_idxs = np.where(idxs2==i[0])[0]			# what are the indexes of the duplicate entry in idxs2 
             duplicate_idxs_dist = ds[duplicate_idxs]			# find the corresponding distances
-            duplicate_idx_min = np.argmin[duplicate_idxs_dist]		# find the index of the minimum of the above
+            duplicate_idx_min = np.argmin(duplicate_idxs_dist)		# find the index of the minimum of the above
             keep = duplicate_idxs[duplicate_idx_min]			# this the index in duplicate_idxs to be retained
             for d in duplicate_idxs:					# delete all but "keep" index
               if d == keep:
