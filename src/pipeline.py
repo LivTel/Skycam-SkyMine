@@ -438,14 +438,17 @@ class pipeline():
  
         ws_cat = wsc(ip, port, self.err, self.logger) 
         
-        # check we haven't already processed this frame
+        '''# check we haven't already processed this frame
         ws_cat.skycam_images_get_by_filename(self.params['schemaName'], os.path.basename(f))
         if ws_cat.status != 200:
             self.err.setError(15)
             self.err.handleError()
             return False  
         res = json.loads(ws_cat.text)
-        img_count = int(res[0]['count'])
+        img_count = int(res[0]['count'])'''	#FIXME UNCOMMENT
+        
+        img_count == 0				#FIXME REMOVE!
+        
         if img_count > 0:
             self.err.setError(18)
             self.err.handleError()  
@@ -476,6 +479,11 @@ class pipeline():
             for key, val in ZPs.iteritems():
                 values["FRAME_ZP_" + key] = val[0]
                 values["FRAME_ZP_STDEV_" + key] = val[1]
+            
+            # add frame zeropoint coefficients
+            for key, val in ZP_COEFFS.iteritems():
+                values["FRAME_ZP_M_" + key] = val[0]
+                values["FRAME_ZP_C_" + key] = val[1]    
                 
             # generate a uuid for this img_id and add to values
             img_id = str(uuid.uuid1())
@@ -492,6 +500,9 @@ class pipeline():
             img_dateObs = values['DATE_OBS'].replace("%3A", ':')
 
             self.logger.info("(pipeline._storeToPostgresDatabase) Stored image details for " + str(os.path.basename(f)) + " with img_id of " + str(img_id) + " in images table")
+            
+            im.closeFITSFile()  		#FIXME REMOVE!
+            return				#FIXME REMOVE!
  
             ## *******************************
             ## **** skycam[tz?].catalogue ****
